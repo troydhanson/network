@@ -1,0 +1,8 @@
+UDP sample code
+---------------
+
+basic/    simple client and server that use read/write for UDP
+sendto/   same as the simple client/server but use sendto/recvfrom
+sigio/    simple UDP server that uses SIGIO signal-driven I/O 
+repeater/ proxy to get UDP on one ip/port and send to multiple dests
+perl/     simple Perl UDP client/server

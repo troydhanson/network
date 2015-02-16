@@ -1,0 +1,5 @@
+Perl samples using Net::Pcap binding
+-------------------------------------------------------------
+minimal.pl:  minimal sniffer program
+sniff_to_pcap.pl: minimal sniffer that also writes a pcap
+mk_synthetic_pcap.pl: write a pcap (non-IP) of ascii "packets"

@@ -1,0 +1,9 @@
+
+See http://troydhanson.github.com/misc/Unix_domain_sockets.html
+
+Files
+-------------------------------------------------------------------------------
+Unix_domain_sockets.txt  -- my own notes about UNIX domain sockets 
+cli.c                    -- example of UNIX domain socket client 
+srv.c                    -- example of UNIX domain client server.
+                            This is an iterative (one client at a time) server.
