@@ -79,8 +79,8 @@ won't collide with other names in the filesystem.  Also, when a server closes
 its UNIX domain listening socket in the abstract namespace, its file is deleted;
 with regular UNIX domain sockets, the file persists after the server closes it.
 
-:t: https://github.com/troydhanson/network-templates/tree/master/unixdomain
-:b: https://github.com/troydhanson/network-templates/blob/master/unixdomain
+:t: https://github.com/troydhanson/network/tree/master/unixdomain
+:b: https://github.com/troydhanson/network/blob/master/unixdomain
 
 Resources
 ---------

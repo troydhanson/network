@@ -12,13 +12,13 @@ These are all placed in the public domain.
 .How to use
 
 * you can browse the links below, or
-* clone it with git: `git clone https://github.com/troydhanson/network-templates.git`
-* Here's https://github.com/troydhanson/network-templates[this repo's Github page]
+* clone it with git: `git clone https://github.com/troydhanson/network.git`
+* Here's https://github.com/troydhanson/network[this repo's Github page]
 
 
 // this defines an attribute called {t} used below
-:t: https://github.com/troydhanson/network-templates/tree/master/
-:f: http://troydhanson.github.com/network-templates/Unix_domain_sockets.html
+:t: https://github.com/troydhanson/network/tree/master/
+:f: http://troydhanson.github.com/network/Unix_domain_sockets.html
 
 Networking and communications
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
