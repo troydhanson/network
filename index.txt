@@ -17,7 +17,7 @@ These are all placed in the public domain.
 
 
 // this defines an attribute called {t} used below
-:t: https://github.com/troydhanson/network-templates/tree/master/network/
+:t: https://github.com/troydhanson/network-templates/tree/master/
 :f: http://troydhanson.github.com/network-templates/Unix_domain_sockets.html
 
 Networking and communications
@@ -31,11 +31,9 @@ Networking and communications
 | {t}ifinfo[ifinfo]    | how to list network interfaces, IP addresses and MACs in C
 | {t}unixdomain[unixdomain]   | how to use UNIX domain sockets in C {f}[notes] 
 | {t}qcp[qcp]          | a utility to copy files across a network with no authentication 
-| {t}serial[serial]    | how to read the serial port in C 
 |=================================================================================================================
 
-Other resources
-~~~~~~~~~~~~~~~
+.Other resources
 My other tools and notes are listed on http://troydhanson.github.io/[my main GitHub page].
 
 // vim: set tw=80 wm=2 nowrap syntax=asciidoc: 
