@@ -1,2 +1,0 @@
-cat-pcap: concatenate pcaps using the first's global header 
-mod-pcap: rewrite packet timestamps in a pcap

@@ -1,4 +1,0 @@
-cli - sends UDP datagram to a multicast address 
-srv - join a multicast group, receive multicast
-
-cli-iface - specify interface to send multicast  
