@@ -1,0 +1,41 @@
+Network templates
+-----------------
+Troy D. Hanson <tdh@tkhanson.net>
+
+Here's a link back to my http://troydhanson.github.io/[main GitHub page].
+
+About
+~~~~~
+These are templates for basic techniques for C network programs on Linux.
+These are all placed in the public domain.  
+
+.How to use
+
+* you can browse the links below, or
+* clone it with git: `git clone https://github.com/troydhanson/network-templates.git`
+* Here's https://github.com/troydhanson/network-templates[this repo's Github page]
+
+
+// this defines an attribute called {t} used below
+:t: https://github.com/troydhanson/network-templates/tree/master/network/
+:f: http://troydhanson.github.com/network-templates/Unix_domain_sockets.html
+
+Networking and communications
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[width="50%",cols="10^m,50",grid="none"]
+|=================================================================================================================
+| {t}tcp/basic[tcp]    | TCP client and server in C 
+| {t}udp/basic[udp]    | UDP client and server in C
+| {t}dns[dns]          | how to do a DNS lookup in C 
+| {t}pcap/basic[pcap]  | using libpcap to capture packets in C 
+| {t}ifinfo[ifinfo]    | how to list network interfaces, IP addresses and MACs in C
+| {t}unixdomain[unixdomain]   | how to use UNIX domain sockets in C {f}[notes] 
+| {t}qcp[qcp]          | a utility to copy files across a network with no authentication 
+| {t}serial[serial]    | how to read the serial port in C 
+|=================================================================================================================
+
+Other resources
+~~~~~~~~~~~~~~~
+My other tools and notes are listed on http://troydhanson.github.io/[my main GitHub page].
+
+// vim: set tw=80 wm=2 nowrap syntax=asciidoc: 

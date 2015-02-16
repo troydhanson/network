@@ -4,7 +4,7 @@
 <head>
 <meta http-equiv="Content-Type" content="application/xhtml+xml; charset=UTF-8" />
 <meta name="generator" content="AsciiDoc 8.6.9" />
-<title>UNIX domain sockets</title>
+<title></title>
 <style type="text/css">
 /* Shared CSS for AsciiDoc xhtml11 and html5 backends */
 
@@ -733,137 +733,92 @@ asciidoc.install();
 </head>
 <body class="article">
 <div id="header">
-<h1>UNIX domain sockets</h1>
-<span id="author">Troy D. Hanson</span><br />
-<span id="email"><code>&lt;<a href="mailto:tdh@tkhanson.net">tdh@tkhanson.net</a>&gt;</code></span><br />
 </div>
 <div id="content">
 <div class="sect1">
-<h2 id="_communication_within_a_host">Communication within a host</h2>
+<h2 id="_network_templates">Network templates</h2>
 <div class="sectionbody">
-<div class="paragraph"><p>UNIX domain sockets are a method by which processes on the same host can
-communicate. Communication is bidirectional with stream sockets
-and unidirectional with datagram sockets.</p></div>
-<div class="literalblock">
-<div class="content">
-<pre><code>fd = socket(AF_UNIX, SOCK_STREAM, 0);</code></pre>
-</div></div>
+<div class="paragraph"><p>Troy D. Hanson &lt;<a href="mailto:tdh@tkhanson.net">tdh@tkhanson.net</a>&gt;</p></div>
+<div class="paragraph"><p>Here&#8217;s a link back to my <a href="http://troydhanson.github.io/">main GitHub page</a>.</p></div>
 <div class="sect2">
-<h3 id="_identity">Identity</h3>
-<div class="paragraph"><p>Instead of identifying a server by an IP address and port, a UNIX domain socket
-is known by a pathname. Obviously the client and server have to agree on the
-pathname for them to find each other. The server binds the pathname to the socket:</p></div>
-<div class="literalblock">
-<div class="content">
-<pre><code>struct sockaddr_un addr;
-memset(&amp;addr, 0, sizeof(addr));
-addr.sun_family = AF_UNIX;
-strncpy(addr.sun_path, "socket", sizeof(addr.sun_path)-1);
-bind(fd, (struct sockaddr*)&amp;addr, sizeof(addr));</code></pre>
-</div></div>
-<div class="paragraph"><p>The resulting pathname is visible in the filesystem, like:</p></div>
-<div class="literalblock">
-<div class="content">
-<pre><code>% ls -l
-srwxr-xr-x 1 thanson thanson     0 2011-07-02 17:11 socket</code></pre>
-</div></div>
-<div class="sect3">
-<h4 id="_unlink_before_bind">Unlink before bind</h4>
-<div class="paragraph"><p>Note that, once created, this socket file will continue to exist, even after the
-server exits. If the server subsequently restarts, the file prevents re-binding:</p></div>
-<div class="literalblock">
-<div class="content">
-<pre><code>% ./srv
-% ./srv
-bind error: Address already in use</code></pre>
-</div></div>
-<div class="paragraph"><p>So, servers should unlink the socket pathname prior to binding it.</p></div>
-</div>
-</div>
-<div class="sect2">
-<h3 id="_file_permissions_control_who_can_connect">File permissions control who can connect</h3>
-<div class="paragraph"><p>For UNIX domain sockets, file and directory permissions restrict which processes
-on the host can open the file, and thus communicate with the server.  Therefore,
-UNIX domain sockets provide an advantage over Internet sockets (to which anyone
-can connect, unless extra authentication logic is implemented).</p></div>
-</div>
-<div class="sect2">
-<h3 id="_comparison_with_named_pipes_for_ipc">Comparison with named pipes for IPC</h3>
-<div class="paragraph"><p>IPC within a Unix host by may be accomplished by several other means including
-named pipes.  What circumstances favor UNIX domain sockets versus pipes? The
-choice is influenced by these factors:</p></div>
-<div class="dlist"><dl>
-<dt class="hdlist1">
-Duplex
-</dt>
-<dd>
-<p>
-  Stream sockets provide bi-directional communication while named pipes are
-  uni-directional.
-</p>
-</dd>
-<dt class="hdlist1">
-Distinct clients
-</dt>
-<dd>
-<p>
-  Clients using sockets each have an independent connection to the server.
-  With named pipes, many clients may write to the pipe, but the server cannot
-  distinguish the clients from each other-- the server has only one descriptor
-  to read from the named pipe. Because the named pipe has only read descriptor
-  and possibly-multiple writers, random interleaving can also occur if a client
-  writes more than <code>PIPE_BUF</code> bytes in one operation. Since pipes have these
-  limitations, UNIX domain sockets should be used if there are multiple clients
-  that need to be distinguishable or which write long messages to the server.
-</p>
-</dd>
-<dt class="hdlist1">
-Method of creating and opening
-</dt>
-<dd>
-<p>
-  Sockets are created using <code>socket</code> and assigned their identity via <code>bind</code>. Named
-  pipes are created using <code>mkfifo</code>. To connect to a UNIX domain socket the normal
-  <code>socket</code>/<code>connect</code> calls are used, but a named pipe is written using regular file
-  <code>open</code> and <code>write</code>. That makes them easier to use from a shell script for example.
-</p>
-</dd>
-</dl></div>
-</div>
-<div class="sect2">
-<h3 id="_linux_abstract_socket_namespace">Linux Abstract Socket Namespace</h3>
-<div class="paragraph"><p>Linux has a special feature: if the pathname for a UNIX domain socket begins
-with a null byte <em>\0</em>, its name is not mapped into the filesystem. Thus it
-won&#8217;t collide with other names in the filesystem.  Also, when a server closes
-its UNIX domain listening socket in the abstract namespace, its file is deleted;
-with regular UNIX domain sockets, the file persists after the server closes it.</p></div>
-</div>
-</div>
-</div>
-<div class="sect1">
-<h2 id="_resources">Resources</h2>
-<div class="sectionbody">
-<div class="paragraph"><p>Here are <a href="https://github.com/troydhanson/network-scripts/tree/master/network/unixdomain">some C programs</a> that implement a UNIX domain socket client and
-server. These are placed in the public domain.</p></div>
-<div class="ulist"><ul>
+<h3 id="_about">About</h3>
+<div class="paragraph"><p>These are templates for basic techniques for C network programs on Linux.
+These are all placed in the public domain.</p></div>
+<div class="ulist"><div class="title">How to use</div><ul>
 <li>
 <p>
-A <a href="https://github.com/troydhanson/network-scripts/blob/master/network/unixdomain/srv.c">server</a> example
+you can browse the links below, or
 </p>
 </li>
 <li>
 <p>
-A <a href="https://github.com/troydhanson/network-scripts/blob/master/network/unixdomain/cli.c">client</a> example
+clone it with git: <code>git clone https://github.com/troydhanson/network-templates.git</code>
+</p>
+</li>
+<li>
+<p>
+Here&#8217;s <a href="https://github.com/troydhanson/network-templates">this repo&#8217;s Github page</a>
 </p>
 </li>
 </ul></div>
+</div>
+<div class="sect2">
+<h3 id="_networking_and_communications">Networking and communications</h3>
+<div class="tableblock">
+<table rules="none"
+width="50%"
+frame="border"
+cellspacing="0" cellpadding="4">
+<col width="16%" />
+<col width="83%" />
+<tbody>
+<tr>
+<td align="center" valign="top"><p class="table"><code><a href="https://github.com/troydhanson/network-templates/tree/master/network/tcp/basic">tcp</a></code></p></td>
+<td align="left" valign="top"><p class="table">TCP client and server in C</p></td>
+</tr>
+<tr>
+<td align="center" valign="top"><p class="table"><code><a href="https://github.com/troydhanson/network-templates/tree/master/network/udp/basic">udp</a></code></p></td>
+<td align="left" valign="top"><p class="table">UDP client and server in C</p></td>
+</tr>
+<tr>
+<td align="center" valign="top"><p class="table"><code><a href="https://github.com/troydhanson/network-templates/tree/master/network/dns">dns</a></code></p></td>
+<td align="left" valign="top"><p class="table">how to do a DNS lookup in C</p></td>
+</tr>
+<tr>
+<td align="center" valign="top"><p class="table"><code><a href="https://github.com/troydhanson/network-templates/tree/master/network/pcap/basic">pcap</a></code></p></td>
+<td align="left" valign="top"><p class="table">using libpcap to capture packets in C</p></td>
+</tr>
+<tr>
+<td align="center" valign="top"><p class="table"><code><a href="https://github.com/troydhanson/network-templates/tree/master/network/ifinfo">ifinfo</a></code></p></td>
+<td align="left" valign="top"><p class="table">how to list network interfaces, IP addresses and MACs in C</p></td>
+</tr>
+<tr>
+<td align="center" valign="top"><p class="table"><code><a href="https://github.com/troydhanson/network-templates/tree/master/network/unixdomain">unixdomain</a></code></p></td>
+<td align="left" valign="top"><p class="table">how to use UNIX domain sockets in C <a href="http://troydhanson.github.com/network-templates/Unix_domain_sockets.html">notes</a></p></td>
+</tr>
+<tr>
+<td align="center" valign="top"><p class="table"><code><a href="https://github.com/troydhanson/network-templates/tree/master/network/qcp">qcp</a></code></p></td>
+<td align="left" valign="top"><p class="table">a utility to copy files across a network with no authentication</p></td>
+</tr>
+<tr>
+<td align="center" valign="top"><p class="table"><code><a href="https://github.com/troydhanson/network-templates/tree/master/network/serial">serial</a></code></p></td>
+<td align="left" valign="top"><p class="table">how to read the serial port in C</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_other_resources">Other resources</h3>
+<div class="paragraph"><p>My other tools and notes are listed on <a href="http://troydhanson.github.io/">my main GitHub page</a>.</p></div>
+</div>
 </div>
 </div>
 </div>
 <div id="footnotes"><hr /></div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2015-02-15 22:19:59 EST
+Last updated 2015-02-15 22:18:56 EST
 </div>
 </div>
 </body>
