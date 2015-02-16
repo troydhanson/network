@@ -11,7 +11,7 @@ warning:
 $(HTML): %.html: %.txt
 	asciidoc $<
 
-TMP=/tmp/network-scripts-gh-pages
+TMP=/tmp/network-templates-gh-pages
 stage:
 	mkdir -p ${TMP}
 	rm -rif ${TMP}/*
