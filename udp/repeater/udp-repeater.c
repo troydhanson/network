@@ -12,12 +12,13 @@
  *
  * example of use
  *
- *   udp-repeater -p 6180 -s destination1.net -s destination2.net
+ *   udp-repeater -p 6180 -s destination1.net -s destination2.net:9199
  *
- * This causes udp-repeater to listen on the local matchine (port 6180,
- * and you can specify a particular local IP address with the -l flag).
+ * This causes udp-repeater to listen on the local matchine (port 6180;
+ * you can also bind a particular local IP address with the -l flag).
  * Whenever a UDP datagram is received, it is re-sent to each destination
- * (specified with the -s flag) on the same port as we received it on.
+ * (specified with the -s flag) on the same port as we received it on,
+ * or to the specified port (:9199) for a particular destination.
  *
  * To test it, run udp-repeater with appropriate arguments, set up a sink
  * to receive the datagrams somewhere, like:
@@ -49,12 +50,15 @@ int ndests = 0;
 struct sockaddr_in dest[MAX_DESTS];
 
 void usage() {
-  fprintf(stderr, "usage: %s [-v] [-l <listen-address>] -p <listen-port> "
-                  "-s <destination-host> [-s <destination-host>]\n", prog);
+  fprintf(stderr, "usage: %s [-v] [-l <bind-addr>] "
+                  "-p <port> -s <host>[:<port>] ...\n", prog);
   exit(-1);
 }
 
 void add_destination(char *host) {
+  char *colon;
+  int dst_port; 
+
   if (!port) {
     fprintf(stderr, "specify -p <port> before destination addresses\n");
     exit(-1);
@@ -63,8 +67,12 @@ void add_destination(char *host) {
     fprintf(stderr, "too many UDP destinations\n");
     exit(-1);
   }
+  colon = strrchr(host,':');
+  dst_port = colon ? atoi(colon+1) : port;
+  if (colon) *colon = '\0';
+
   dest[ndests].sin_family = AF_INET;
-  dest[ndests].sin_port = htons(port);
+  dest[ndests].sin_port = htons(dst_port);
 
   struct hostent *h = gethostbyname(host);
   if (!h || !h->h_length) {
@@ -79,7 +87,7 @@ void add_destination(char *host) {
   }
 
   if (verbose) fprintf(stderr,"repeat-to %s (%s):%d\n", host,
-    inet_ntoa(dest[ndests].sin_addr), port);
+    inet_ntoa(dest[ndests].sin_addr), dst_port);
 
   ndests++;
 }
