@@ -10,4 +10,5 @@ These are all placed in the public domain.
 * How to [list network interfaces](/ifinfo) in C
 * [UNIX domain sockets](/unixdomain) in C [see notes](http://troydhanson.github.io/network/Unix_domain_sockets.html)
 * my [qcp utility](/qcp) to copy files across a network with no authentication 
+* examples of using the [nanomsg](/nanomsg) library
 
