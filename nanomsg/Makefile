@@ -1,4 +1,4 @@
-PROGS=nano-push nano-pull
+PROGS=nano-push nano-pull nano-epull
 OBJS=$(patsubst %,%.o,$(PROGS))
 
 CFLAGS = -g -Wall -Wextra
