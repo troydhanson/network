@@ -14,7 +14,9 @@ struct {
   char *buf;
   int len;
   time_t now;
+  char *remote;
 } CF = {
+  .remote = "tcp://127.0.0.1:9995",
   .nn_socket = -1,
   .count = 10,
 };
@@ -26,7 +28,7 @@ void usage(char *prog) {
 }
 
 int main(int argc, char *argv[]) {
-  int eid, opt;
+  int eid, opt, rc=0;
 
   while ( (opt = getopt(argc, argv, "v+i:")) != -1) {
     switch (opt) {
@@ -36,22 +38,28 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if ( (CF.nn_socket = nn_socket(AF_SP, NN_PUSH)) < 0) goto done;
+  rc = CF.nn_socket = nn_socket(AF_SP, NN_PUSH);
+  if (rc < 0) goto done;
 
-  while (optind < argc) {
-    char *remote = argv[optind++];
-    if ( (eid = nn_connect(CF.nn_socket, remote)) < 0) goto done;
-  }
+  do {
+    char *remote =  (optind < argc) ? argv[optind++] : CF.remote;
+    eid = nn_connect(CF.nn_socket, remote);
+    if ( (rc = eid) < 0) goto done;
+  } while(optind < argc);
 
   while (CF.count--) {
     CF.now = time(NULL);
     CF.buf = asctime(localtime(&CF.now));
     CF.len = strlen(CF.buf);
-    if ( nn_send(CF.nn_socket, CF.buf, CF.len, 0) < 0) goto done;
+    rc = nn_send(CF.nn_socket, CF.buf, CF.len, 0);
+    if (rc < 0) goto done;
     sleep(10);
   }
 
+  rc = 0;
+
  done:
+  if (rc < 0) fprintf(stderr,"nano: %s\n", nn_strerror(errno));
   if (CF.nn_socket >= 0) nn_close(CF.nn_socket);
   return 0;
 }

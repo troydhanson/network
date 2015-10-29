@@ -4,16 +4,18 @@ Examples of using [nanomsg](http://nanomsg.org)
 * nano-push.c: simple PUSH publisher
 * nano-epoll.c: poll nanomsg and OS-level sockets 
 
-Integrating nanomsg and OS descriptors into a select/poll loop
-uses nanomsg's socket option API to get an OS descriptor first.
-That descriptor can be used with select/poll. 
+nano-pull binds a local port, and nano-push connects to it.
+Many copies of nano-push can run at the same time. Only one
+nano-pull can be effective at once (have the port bound).
 
-Once we have a set of descriptors (OS, and nanomsg-based) we
-can build a main loop that waits for I/O readiness on any of them.
+OS and nano socket monitoring in one event loop
 
-There are different ways to structure the main loop if we want
-to wait for descriptor readiness or signal arrival at any time.
-We can convert signals into file descriptor events using signalfd.
-Or we can convert file descriptor events into signals (signal-driven I/O).
-The former is compatible with epoll; the latter is compatible with sigwaitinfo.
+A program that manages OS file descriptors and nano sockets in
+a single event loop (say, epoll) can use nano's socket option API
+to get an underlying file descriptor.
+
+A real program may also want to handle signals properly in the main loop.
+We can convert signals into file descriptor events using signalfd. Then use
+epoll. Or, we can convert file descriptor events into signals (signal-driven
+I/O). Then use sigwaitinfo.
 

@@ -24,7 +24,7 @@ void usage(char *prog) {
 }
 
 int main(int argc, char *argv[]) {
-  int eid, opt;
+  int eid, opt, rc = 0;
 
   while ( (opt = getopt(argc, argv, "v+l:")) != -1) {
     switch (opt) {
@@ -34,16 +34,22 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if ( (CF.nn_socket = nn_socket(AF_SP, NN_PULL)) < 0) goto done;
-  if ( (eid = nn_bind(CF.nn_socket, CF.local)) < 0) goto done;
+  rc = (CF.nn_socket = nn_socket(AF_SP, NN_PULL));
+  if (rc < 0) goto done;
+  rc = (eid = nn_bind(CF.nn_socket, CF.local));
+  if (rc < 0) goto done;
 
   while (1) {
-    if ( (CF.len = nn_recv(CF.nn_socket, &CF.buf, NN_MSG, 0)) == -1) goto done;
-    fprintf(stderr,"received: %.*s\n", CF.len, CF.buf);
+    rc = (CF.len = nn_recv(CF.nn_socket, &CF.buf, NN_MSG, 0));
+    if (rc < 0) goto done;
+    fprintf(stderr,"received: %.*s", CF.len, CF.buf);
     nn_freemsg(CF.buf);
   }
 
+  rc = 0;
+
  done:
+  if (rc < 0) fprintf(stderr,"nano: %s\n", nn_strerror(errno));
   if (CF.nn_socket >= 0) nn_close(CF.nn_socket);
   return 0;
 }
