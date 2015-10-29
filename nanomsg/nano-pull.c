@@ -26,11 +26,11 @@ void usage(char *prog) {
 int main(int argc, char *argv[]) {
   int eid, opt, rc = 0;
 
-  while ( (opt = getopt(argc, argv, "v+l:")) != -1) {
+  while ( (opt = getopt(argc, argv, "v+l:h")) != -1) {
     switch (opt) {
       case 'v': CF.verbose++; break;
       case 'l': CF.local = strdup(optarg); break;
-      default: usage(argv[0]); break;
+      case 'h': default: usage(argv[0]); break;
     }
   }
 

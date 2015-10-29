@@ -25,7 +25,7 @@ struct {
   char *local;   /* nano binding */
   char *buf;     /* nano allocd msg */
   int len;       /* len of msg */
-} cfg = {
+} CF = {
   .signal_fd = -1,
   .epoll_fd = -1,
   .local = "tcp://127.0.0.1:9995",
@@ -34,7 +34,7 @@ struct {
 };
 
 void usage() {
-  fprintf(stderr,"usage: %s [-v] \n", cfg.prog);
+  fprintf(stderr,"usage: %s [-v] [-l <local-bind>]\n", CF.prog);
   exit(-1);
 }
 
@@ -51,8 +51,8 @@ int new_epoll(int events, int fd) {
   memset(&ev,0,sizeof(ev)); // placate valgrind
   ev.events = events;
   ev.data.fd= fd;
-  if (cfg.verbose) fprintf(stderr,"adding fd %d to epoll\n", fd);
-  rc = epoll_ctl(cfg.epoll_fd, EPOLL_CTL_ADD, fd, &ev);
+  if (CF.verbose) fprintf(stderr,"adding fd %d to epoll\n", fd);
+  rc = epoll_ctl(CF.epoll_fd, EPOLL_CTL_ADD, fd, &ev);
   if (rc == -1) {
     fprintf(stderr,"epoll_ctl: %s\n", strerror(errno));
   }
@@ -63,14 +63,14 @@ int handle_signal() {
   int rc=-1;
   struct signalfd_siginfo info;
   
-  if (read(cfg.signal_fd, &info, sizeof(info)) != sizeof(info)) {
+  if (read(CF.signal_fd, &info, sizeof(info)) != sizeof(info)) {
     fprintf(stderr,"failed to read signal fd buffer\n");
     goto done;
   }
 
   switch(info.ssi_signo) {
     case SIGALRM: 
-      if ((++cfg.ticks % 10) == 0) periodic_work();
+      if ((++CF.ticks % 10) == 0) periodic_work();
       alarm(1); 
       break;
     default: 
@@ -88,10 +88,10 @@ int handle_signal() {
 int handle_nn() {
   int rc=-1;
 
-  rc = (cfg.len = nn_recv(cfg.nn_socket, &cfg.buf, NN_MSG, 0));
+  rc = (CF.len = nn_recv(CF.nn_socket, &CF.buf, NN_MSG, 0));
   if (rc < 0) goto done;
-  fprintf(stderr,"received: %.*s", cfg.len, cfg.buf);
-  nn_freemsg(cfg.buf);
+  fprintf(stderr,"received: %.*s", CF.len, CF.buf);
+  nn_freemsg(CF.buf);
 
   rc = 0;
 
@@ -103,12 +103,13 @@ int handle_nn() {
 int main(int argc, char *argv[]) {
   int opt, rc=0, eid;
   unsigned n;
-  cfg.prog = argv[0];
+  CF.prog = argv[0];
   struct epoll_event ev;
 
-  while ( (opt=getopt(argc,argv,"vh")) != -1) {
+  while ( (opt=getopt(argc,argv,"v+l:h")) != -1) {
     switch(opt) {
-      case 'v': cfg.verbose++; break;
+      case 'v': CF.verbose++; break;
+      case 'l': CF.local = strdup(optarg); break;
       case 'h': default: usage(); break;
     }
   }
@@ -124,45 +125,45 @@ int main(int argc, char *argv[]) {
   for(n=0; n < sizeof(sigs)/sizeof(*sigs); n++) sigaddset(&sw, sigs[n]);
 
   /* create the signalfd for receiving signals */
-  cfg.signal_fd = signalfd(-1, &sw, 0);
-  if (cfg.signal_fd == -1) {
+  CF.signal_fd = signalfd(-1, &sw, 0);
+  if (CF.signal_fd == -1) {
     fprintf(stderr,"signalfd: %s\n", strerror(errno));
     goto done;
   }
 
   /* set up the epoll instance */
-  cfg.epoll_fd = epoll_create(1); 
-  if (cfg.epoll_fd == -1) {
+  CF.epoll_fd = epoll_create(1); 
+  if (CF.epoll_fd == -1) {
     fprintf(stderr,"epoll: %s\n", strerror(errno));
     goto done;
   }
 
   /* set up the nano PULL socket */
-  rc = (cfg.nn_socket = nn_socket(AF_SP, NN_PULL));
+  rc = (CF.nn_socket = nn_socket(AF_SP, NN_PULL));
   if (rc < 0) goto done;
-  rc = (eid = nn_bind(cfg.nn_socket, cfg.local));
+  rc = (eid = nn_bind(CF.nn_socket, CF.local));
   if (rc < 0) goto done;
 
   /* add descriptors of interest */
   size_t fd_sz = sizeof(int);
-  rc = nn_getsockopt(cfg.nn_socket, NN_SOL_SOCKET, NN_RCVFD, &cfg.nn_fd, &fd_sz);
+  rc = nn_getsockopt(CF.nn_socket, NN_SOL_SOCKET, NN_RCVFD, &CF.nn_fd, &fd_sz);
   if (rc < 0) goto done;
-  if (new_epoll(EPOLLIN, cfg.nn_fd)) goto done;     // nano socket
-  if (new_epoll(EPOLLIN, cfg.signal_fd)) goto done; // signal socket
+  if (new_epoll(EPOLLIN, CF.nn_fd)) goto done;     // nano socket
+  if (new_epoll(EPOLLIN, CF.signal_fd)) goto done; // signal socket
 
   fprintf(stderr,"starting... press ctrl-c to exit\n");
 
   alarm(1);
-  while (epoll_wait(cfg.epoll_fd, &ev, 1, -1) > 0) {
-    if (cfg.verbose > 1)  fprintf(stderr,"epoll reports fd %d\n", ev.data.fd);
-    if (ev.data.fd == cfg.nn_fd)     { if (handle_nn() < 0) goto done; }
-    if (ev.data.fd == cfg.signal_fd) { if (handle_signal() < 0) goto done; }
+  while (epoll_wait(CF.epoll_fd, &ev, 1, -1) > 0) {
+    if (CF.verbose > 1)  fprintf(stderr,"epoll reports fd %d\n", ev.data.fd);
+    if (ev.data.fd == CF.nn_fd)     { if (handle_nn() < 0) goto done; }
+    if (ev.data.fd == CF.signal_fd) { if (handle_signal() < 0) goto done; }
   }
 
 done:
   if (rc < 0) fprintf(stderr,"nano: %s\n", nn_strerror(errno));
-  if (cfg.nn_socket >= 0) nn_close(cfg.nn_socket);
-  if (cfg.epoll_fd != -1) close(cfg.epoll_fd);
-  if (cfg.signal_fd != -1) close(cfg.signal_fd);
+  if (CF.nn_socket >= 0) nn_close(CF.nn_socket);
+  if (CF.epoll_fd != -1) close(CF.epoll_fd);
+  if (CF.signal_fd != -1) close(CF.signal_fd);
   return 0;
 }
