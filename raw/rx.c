@@ -1,5 +1,5 @@
 /* 
- * Use Linux SOCK_RAW/PACKET_RX_RING for rx.
+ * Use Linux AF_PACKET/SOCK_RAW with PACKET_RX_RING for rx.
  * 
  * see packet(7)
  *
@@ -9,7 +9,6 @@
  *
  */
 
-#define _GNU_SOURCE
 #include <errno.h>
 #include <sys/epoll.h>
 #include <sys/signalfd.h>
@@ -19,6 +18,10 @@
 #include <unistd.h>
 #include <string.h>
 
+#include <sys/socket.h>
+#include <linux/if_packet.h>
+#include <net/ethernet.h>
+
 struct {
   int verbose;
   char *prog;
@@ -26,12 +29,16 @@ struct {
   int ticks;
   int bufsz;
   int snaplen;
+  int rx_fd;
   int signal_fd;
   int epoll_fd;
 } cfg = {
   .snaplen = 65535,
   .dev = "eth0",
   .bufsz = 1024*1024*100, /* 100 mb */
+  .rx_fd = -1,
+  .signal_fd = -1,
+  .epoll_fd = -1,
 };
 
 void usage() {
@@ -45,6 +52,55 @@ void usage() {
 
 /* signals that we'll accept via signalfd in epoll */
 int sigs[] = {SIGHUP,SIGTERM,SIGINT,SIGQUIT,SIGALRM};
+
+int get_interface(void) {
+  int rc=-1, idx, family;
+  struct ifaddrs *head, *ifa;
+
+  rc = getifaddrs(&head);
+  if (rc < 0) {
+    fprintf(stderr, "getifaddrs: %s\n", strerror(errno));
+    goto done;
+  }
+
+  for (ifa = head; ifa != NULL; ifa = ifa->ifa_next) {
+     if (strcmp(ifa->ifa_name, cfg.dev)) continue;
+     if (ifa->ifa_addr == NULL) continue;
+     if (ifa->ifa_addr->sa_family != AF_PACKET) continue;
+  }
+
+  freeifaddrs(head);
+  rc = 0;
+
+ done:
+  return rc ? rc : idx;
+}
+
+int setup_rx(void) {
+  int rc=-1;
+
+  cfg.rx_fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+  if (cfg.rx_fd == -1) {
+    fprintf(stderr,"socket: %s\n", strerror(errno));
+    goto done;
+  }
+
+  /* set up promisc mode */
+  struct packet_mreq m = {
+    .mr_ifindex = 0, /* FIXME interface number */
+    .mr_type = PACKET_MR_PROMISC,
+  };
+  rc = setsockopt(cfg.rx_fd, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &m, sizeof(m));
+  if (rc < 0) {
+    fprintf(stderr,"setsockopt: %s\n", strerror(errno));
+    goto done;
+  }
+
+  rc = 0;
+
+ done:
+  return rc;
+}
 
 void periodic_work() {
 }
@@ -147,6 +203,9 @@ int main(int argc, char *argv[]) {
     goto done;
   }
 
+  /* set up the raw socket */
+  if (setup_rx() < 0) goto done;
+
   /* set up the epoll instance */
   cfg.epoll_fd = epoll_create(1); 
   if (cfg.epoll_fd == -1) {
@@ -165,5 +224,8 @@ int main(int argc, char *argv[]) {
   }
 
 done:
+  if (cfg.rx_fd != -1) close(cfg.rx_fd);
+  if (cfg.signal_fd != -1) close(cfg.signal_fd);
+  if (cfg.epoll_fd != -1) close(cfg.epoll_fd);
   return 0;
 }
