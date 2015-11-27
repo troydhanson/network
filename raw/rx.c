@@ -1,5 +1,5 @@
 /* 
- * Use Linux kernel low level packet interface for rx.
+ * Use Linux SOCK_RAW/PACKET_RX_RING for rx.
  * 
  * see packet(7)
  *
