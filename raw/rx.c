@@ -17,10 +17,11 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
+#include <net/if.h>
 
 struct {
   int verbose;
@@ -53,48 +54,52 @@ void usage() {
 /* signals that we'll accept via signalfd in epoll */
 int sigs[] = {SIGHUP,SIGTERM,SIGINT,SIGQUIT,SIGALRM};
 
-int get_interface(void) {
-  int rc=-1, idx, family;
-  struct ifaddrs *head, *ifa;
-
-  rc = getifaddrs(&head);
-  if (rc < 0) {
-    fprintf(stderr, "getifaddrs: %s\n", strerror(errno));
-    goto done;
-  }
-
-  for (ifa = head; ifa != NULL; ifa = ifa->ifa_next) {
-     if (strcmp(ifa->ifa_name, cfg.dev)) continue;
-     if (ifa->ifa_addr == NULL) continue;
-     if (ifa->ifa_addr->sa_family != AF_PACKET) continue;
-  }
-
-  freeifaddrs(head);
-  rc = 0;
-
- done:
-  return rc ? rc : idx;
-}
-
 int setup_rx(void) {
-  int rc=-1;
+  int rc=-1, ec;
 
-  cfg.rx_fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+  /* any link layer protocol packets (linux/if_ether.h) */
+  int protocol = htons(ETH_P_ALL);
+
+  /* create the packet socket */
+  cfg.rx_fd = socket(AF_PACKET, SOCK_RAW, protocol);
   if (cfg.rx_fd == -1) {
     fprintf(stderr,"socket: %s\n", strerror(errno));
     goto done;
   }
 
+  /* convert interface name to index (in ifr.ifr_ifindex) */
+  struct ifreq ifr; 
+  strncpy(ifr.ifr_name, cfg.dev, sizeof(ifr.ifr_name));
+  ec = ioctl(cfg.rx_fd, SIOCGIFINDEX, &ifr);
+  if (ec < 0) {
+    fprintf(stderr,"failed to find interface %s\n", cfg.dev);
+    goto done;
+  }
+
+  /* bind to receive the packets from just one interface */
+  struct sockaddr_ll sl;
+  memset(&sl, 0, sizeof(sl));
+  sl.sll_family = AF_PACKET;
+  sl.sll_protocol = protocol;
+  sl.sll_ifindex = ifr.ifr_ifindex;
+  ec = bind(cfg.rx_fd, (struct sockaddr*)&sl, sizeof(sl));
+  if (ec < 0) {
+    fprintf(stderr,"socket: %s\n", strerror(errno));
+    goto done;
+  }
+
+#if 0
   /* set up promisc mode */
   struct packet_mreq m = {
-    .mr_ifindex = 0, /* FIXME interface number */
+    .mr_ifindex = ifr.ifr_ifindex,
     .mr_type = PACKET_MR_PROMISC,
   };
-  rc = setsockopt(cfg.rx_fd, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &m, sizeof(m));
-  if (rc < 0) {
+  ec = setsockopt(cfg.rx_fd, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &m, sizeof(m));
+  if (ec < 0) {
     fprintf(stderr,"setsockopt: %s\n", strerror(errno));
     goto done;
   }
+#endif
 
   rc = 0;
 
@@ -183,8 +188,6 @@ int main(int argc, char *argv[]) {
       case 'h': default: usage(); break;
     }
   }
-
-  if (cfg.bufsz == -1) goto done; // syntax error 
 
   /* block all signals. we take signals synchronously via signalfd */
   sigset_t all;
