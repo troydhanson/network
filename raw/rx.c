@@ -44,8 +44,7 @@ struct {
 
 void usage() {
   fprintf(stderr,"usage: %s [-v] [options]\n"
-                 " options:      -i <eth>        (read from interface)\n"
-                 "               -B <cap-buf-sz> (capture buf size eg. 10m)\n"
+                 " options:      -i <eth>        (interface name)\n"
                  "\n",
           cfg.prog);
   exit(-1);
@@ -88,18 +87,26 @@ int setup_rx(void) {
     goto done;
   }
 
-#if 0
-  /* set up promisc mode */
-  struct packet_mreq m = {
-    .mr_ifindex = ifr.ifr_ifindex,
-    .mr_type = PACKET_MR_PROMISC,
-  };
+  /* at this point we have a raw packet socket. it could be
+   * used to transmit or receive packets coming on the nic.
+   * we still need to set promiscuous mode to get all packets. */
+  struct packet_mreq m;
+  memset(&m, 0, sizeof(m));
+  m.mr_ifindex = ifr.ifr_ifindex;
+  m.mr_type = PACKET_MR_PROMISC;
   ec = setsockopt(cfg.rx_fd, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &m, sizeof(m));
   if (ec < 0) {
-    fprintf(stderr,"setsockopt: %s\n", strerror(errno));
+    fprintf(stderr,"setsockopt PACKET_ADD_MEMBERSHIP: %s\n", strerror(errno));
     goto done;
   }
-#endif
+
+  /* enable ancillary data, providing packet length and snaplen, etc */
+  int on = 1;
+  ec = setsockopt(cfg.rx_fd, SOL_PACKET, PACKET_AUXDATA, &on, sizeof(on));
+  if (ec < 0) {
+    fprintf(stderr,"setsockopt PACKET_AUXDATA: %s\n", strerror(errno));
+    goto done;
+  }
 
   rc = 0;
 
@@ -124,7 +131,7 @@ int new_epoll(int events, int fd) {
   return rc;
 }
 
-int handle_signal() {
+int handle_signal(void) {
   int rc=-1;
   struct signalfd_siginfo info;
   
@@ -151,28 +158,58 @@ int handle_signal() {
   return rc;
 }
 
-/* parse a suffixed number like 1m (one megabyte) */
-int parse_kmg(char *str) {
-  char *c;
-  int i;
-  if (sscanf(str,"%u",&i) != 1) {
-    fprintf(stderr,"could not parse integer in %s\n",str);
-    return -1;
+int handle_packet(void) {
+  int rc=-1;
+  ssize_t nr;
+  struct tpacket_auxdata *pa; /* for PACKET_AUXDATA; see packet(7) */
+  struct cmsghdr *cmsg;
+  union {
+    struct cmsghdr h;
+    char data[sizeof(struct cmsghdr) + sizeof(struct tpacket_auxdata)];
+  } u;
+
+  /* we get the packet and metadata via recvmsg */
+  struct msghdr msgh;
+  memset(&msgh, 0, sizeof(msgh));
+
+  /* 'name' is source address. TODO redundant if parsing outselves? */
+  char name[100];
+  msgh.msg_name = name; 
+  msgh.msg_namelen = sizeof(name); 
+
+  /* ancillary data; we requested packet metadata (PACKET_AUXDATA) */
+  msgh.msg_control = &u;
+  msgh.msg_controllen = sizeof(u);
+
+  /* buffer for packet content itself. */
+  char buf[2000];
+  struct iovec iov;
+  iov.iov_base = buf;
+  iov.iov_len = sizeof(buf);
+  msgh.msg_iov = &iov;
+  msgh.msg_iovlen = 1;
+
+  nr = recvmsg(cfg.rx_fd, &msgh, 0);
+  if (nr <= 0) {
+    fprintf(stderr,"recvmsg: %s\n", nr ? strerror(errno) : "eof");
+    goto done;
   }
-  for(c=str; *c != '\0'; c++) {
-    switch(*c) {
-      case '0': case '1': case '2': case '3': case '4': 
-      case '5': case '6': case '7': case '8': case '9': 
-         continue;
-      case 'g': case 'G': i *= 1024; /* fall through */
-      case 'm': case 'M': i *= 1024; /* fall through */
-      case 'k': case 'K': i *= 1024; break;
-      default:
-       fprintf(stderr,"unknown suffix on integer in %s\n",str);
-       return -1;
-    }
+
+  fprintf(stderr,"received %lu bytes of message data\n", (long)nr);
+  fprintf(stderr,"received %lu bytes of control data\n", (long)msgh.msg_controllen);
+  cmsg = CMSG_FIRSTHDR(&msgh);
+  if (cmsg == NULL) {
+    fprintf(stderr,"ancillary data missing from packet\n");
+    goto done;
   }
-  return i;
+  pa = (struct tpacket_auxdata*)CMSG_DATA(cmsg);
+  fprintf(stderr, " packet length  %u\n", pa->tp_len);
+  fprintf(stderr, " packet snaplen %u\n", pa->tp_snaplen);
+
+  rc = 0;
+
+ done:
+  return rc;
 }
 
 int main(int argc, char *argv[]) {
@@ -180,11 +217,10 @@ int main(int argc, char *argv[]) {
   cfg.prog = argv[0];
   int n,opt;
 
-  while ( (opt=getopt(argc,argv,"vB:f:i:h")) != -1) {
+  while ( (opt=getopt(argc,argv,"vi:h")) != -1) {
     switch(opt) {
       case 'v': cfg.verbose++; break;
       case 'i': cfg.dev=strdup(optarg); break; 
-      case 'B': cfg.bufsz=parse_kmg(optarg); break; 
       case 'h': default: usage(); break;
     }
   }
@@ -217,13 +253,15 @@ int main(int argc, char *argv[]) {
   }
 
   /* add descriptors of interest */
-  if (new_epoll(EPOLLIN, cfg.signal_fd))   goto done; // signal socket
+  if (new_epoll(EPOLLIN, cfg.signal_fd)) goto done; // signals
+  if (new_epoll(EPOLLIN, cfg.rx_fd)) goto done;     // packets
 
   alarm(1);
 
   while (epoll_wait(cfg.epoll_fd, &ev, 1, -1) > 0) {
     if (cfg.verbose > 1)  fprintf(stderr,"epoll reports fd %d\n", ev.data.fd);
     if      (ev.data.fd == cfg.signal_fd)   { if (handle_signal() < 0) goto done; }
+    else if (ev.data.fd == cfg.rx_fd)       { if (handle_packet() < 0) goto done; }
   }
 
 done:
