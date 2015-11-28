@@ -18,13 +18,19 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <assert.h>
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
 #include <net/if.h>
 
 struct {
   int verbose;
+  time_t now;
   char *prog;
   char *dev;
   int ticks;
@@ -33,6 +39,7 @@ struct {
   int rx_fd;
   int signal_fd;
   int epoll_fd;
+  int out_fd;
 } cfg = {
   .snaplen = 65535,
   .dev = "eth0",
@@ -40,6 +47,7 @@ struct {
   .rx_fd = -1,
   .signal_fd = -1,
   .epoll_fd = -1,
+  .out_fd = -1,
 };
 
 void usage() {
@@ -115,6 +123,7 @@ int setup_rx(void) {
 }
 
 void periodic_work() {
+  cfg.now = time(NULL);
 }
 
 int new_epoll(int events, int fd) {
@@ -156,6 +165,19 @@ int handle_signal(void) {
 
  done:
   return rc;
+}
+
+int dump(char *buf, size_t len) {
+  unsigned len32 = (unsigned)len;
+  unsigned zero = 0;
+  unsigned now = (unsigned)cfg.now;
+
+  write(cfg.out_fd, &now, sizeof(uint32_t));
+  write(cfg.out_fd, &zero, sizeof(uint32_t));
+  write(cfg.out_fd, &len32, sizeof(uint32_t)); /* caplen */
+  write(cfg.out_fd, &len32, sizeof(uint32_t)); /* len */
+
+  write(cfg.out_fd, buf, len);
 }
 
 int handle_packet(void) {
@@ -206,16 +228,28 @@ int handle_packet(void) {
   fprintf(stderr, " packet length  %u\n", pa->tp_len);
   fprintf(stderr, " packet snaplen %u\n", pa->tp_snaplen);
 
+  dump(buf,nr);
+
   rc = 0;
 
  done:
   return rc;
 }
 
+const uint8_t pcap_glb_hdr[] = {
+ 0xd4, 0xc3, 0xb2, 0xa1,  /* magic number */
+ 0x02, 0x00, 0x04, 0x00,  /* version major, version minor */
+ 0x00, 0x00, 0x00, 0x00,  /* this zone */
+ 0x00, 0x00, 0x00, 0x00,  /* sigfigs  */
+ 0xff, 0xff, 0x00, 0x00,  /* snaplen  */
+ 0x01, 0x00, 0x00, 0x00   /* network  */
+};
+
 int main(int argc, char *argv[]) {
   struct epoll_event ev;
   cfg.prog = argv[0];
   int n,opt;
+  cfg.now=time(NULL);
 
   while ( (opt=getopt(argc,argv,"vi:h")) != -1) {
     switch(opt) {
@@ -224,6 +258,13 @@ int main(int argc, char *argv[]) {
       case 'h': default: usage(); break;
     }
   }
+
+  cfg.out_fd = open("out.pcap",O_TRUNC|O_CREAT|O_WRONLY, 0644);
+  if (cfg.out_fd < 0) {
+    fprintf(stderr,"open: %s\n", strerror(errno));
+    goto done;
+  }
+  write(cfg.out_fd, pcap_glb_hdr, sizeof(pcap_glb_hdr));
 
   /* block all signals. we take signals synchronously via signalfd */
   sigset_t all;
@@ -266,6 +307,7 @@ int main(int argc, char *argv[]) {
 
 done:
   if (cfg.rx_fd != -1) close(cfg.rx_fd);
+  if (cfg.out_fd != -1) close(cfg.out_fd);
   if (cfg.signal_fd != -1) close(cfg.signal_fd);
   if (cfg.epoll_fd != -1) close(cfg.epoll_fd);
   return 0;

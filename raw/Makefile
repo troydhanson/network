@@ -1,17 +1,17 @@
-OBJS= rx
-all: $(OBJS)
-CFLAGS=-Iinclude
-CFLAGS+=-g
-LDFLAGS=
+PROGS=rx rx-dump
+OBJS=$(patsubst %,%.o,$(PROGS))
+all: $(OBJS) $(PROGS) 
 
-rx: rx.c 
-	$(CC) $(CFLAGS) -c rx.c
-	$(CC) $(CFLAGS) -o $@ rx.o $(LDFLAGS)
+# static pattern rule: multiple targets 
 
-.PHONY: clean install
+$(OBJS): %.o: %.c
+	$(CC) -c $(CFLAGS) $< 
 
-clean:
-	rm -f $(OBJS) *.o
+$(PROGS): %: %.o
+	$(CC) -o $@ $(CFLAGS) $< $(LDFLAGS)
 
-install:
-	cp $(OBJS) /usr/local/bin
+.PHONY: clean
+
+clean:  
+	rm -f $(PROGS) $(OBJS) 
+
