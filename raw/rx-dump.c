@@ -186,9 +186,9 @@ int handle_packet(void) {
   ssize_t nr;
   struct tpacket_auxdata *pa; /* for PACKET_AUXDATA; see packet(7) */
   struct cmsghdr *cmsg;
-  union {
+  struct _u {
     struct cmsghdr h;
-    char data[sizeof(struct cmsghdr) + sizeof(struct tpacket_auxdata)];
+    struct tpacket_auxdata a;
   } u;
 
   /* we get the packet and metadata via recvmsg */
@@ -309,7 +309,10 @@ int main(int argc, char *argv[]) {
 
 done:
   if (cfg.rx_fd != -1) close(cfg.rx_fd);
-  if (cfg.out_fd != -1) close(cfg.out_fd);
+  if (cfg.out_fd != -1) {
+    fprintf(stderr,"wrote %s\n", cfg.out);
+    close(cfg.out_fd);
+  }
   if (cfg.signal_fd != -1) close(cfg.signal_fd);
   if (cfg.epoll_fd != -1) close(cfg.epoll_fd);
   return 0;

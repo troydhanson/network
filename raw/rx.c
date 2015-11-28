@@ -159,9 +159,9 @@ int handle_packet(void) {
   ssize_t nr;
   struct tpacket_auxdata *pa; /* for PACKET_AUXDATA; see packet(7) */
   struct cmsghdr *cmsg;
-  union {
+  struct _u {
     struct cmsghdr h;
-    char data[sizeof(struct cmsghdr) + sizeof(struct tpacket_auxdata)];
+    struct tpacket_auxdata a;
   } u;
 
   /* we get the packet and metadata via recvmsg */
