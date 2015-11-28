@@ -28,15 +28,11 @@ struct {
   char *prog;
   char *dev;
   int ticks;
-  int bufsz;
-  int snaplen;
   int rx_fd;
   int signal_fd;
   int epoll_fd;
 } cfg = {
-  .snaplen = 65535,
   .dev = "eth0",
-  .bufsz = 1024*1024*100, /* 100 mb */
   .rx_fd = -1,
   .signal_fd = -1,
   .epoll_fd = -1,
@@ -171,11 +167,6 @@ int handle_packet(void) {
   /* we get the packet and metadata via recvmsg */
   struct msghdr msgh;
   memset(&msgh, 0, sizeof(msgh));
-
-  /* 'name' is source address. TODO redundant if parsing outselves? */
-  char name[100];
-  msgh.msg_name = name; 
-  msgh.msg_namelen = sizeof(name); 
 
   /* ancillary data; we requested packet metadata (PACKET_AUXDATA) */
   msgh.msg_control = &u;

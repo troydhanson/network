@@ -3,9 +3,10 @@
  * 
  * see packet(7)
  *
- * also 
- *  sudo apt-get install linux-doc
- *  zcat /usr/share/doc/linux-doc/networking/packet_mmap.txt.gz
+ * This program is a bit of a hack. It writes a roughly pcap-
+ * formatted file. The global header and packet headers are fake.
+ * The packet content is dumped from the raw socket. This is a 
+ * test program to sanity check the received packet data.
  *
  */
 
@@ -33,17 +34,15 @@ struct {
   time_t now;
   char *prog;
   char *dev;
+  char *out;
   int ticks;
-  int bufsz;
-  int snaplen;
   int rx_fd;
   int signal_fd;
   int epoll_fd;
   int out_fd;
 } cfg = {
-  .snaplen = 65535,
   .dev = "eth0",
-  .bufsz = 1024*1024*100, /* 100 mb */
+  .out = "test.pcap",
   .rx_fd = -1,
   .signal_fd = -1,
   .epoll_fd = -1,
@@ -53,6 +52,7 @@ struct {
 void usage() {
   fprintf(stderr,"usage: %s [-v] [options]\n"
                  " options:      -i <eth>        (interface name)\n"
+                 "               -o <file.pcap>  (output file)\n"
                  "\n",
           cfg.prog);
   exit(-1);
@@ -167,17 +167,18 @@ int handle_signal(void) {
   return rc;
 }
 
+/* this is a hackish single packet entry in pcap format */
 int dump(char *buf, size_t len) {
   unsigned len32 = (unsigned)len;
   unsigned zero = 0;
   unsigned now = (unsigned)cfg.now;
 
-  write(cfg.out_fd, &now, sizeof(uint32_t));
-  write(cfg.out_fd, &zero, sizeof(uint32_t));
+  write(cfg.out_fd, &now, sizeof(uint32_t));  /* ts_sec */
+  write(cfg.out_fd, &zero, sizeof(uint32_t)); /* ts_usec */
   write(cfg.out_fd, &len32, sizeof(uint32_t)); /* caplen */
   write(cfg.out_fd, &len32, sizeof(uint32_t)); /* len */
 
-  write(cfg.out_fd, buf, len);
+  write(cfg.out_fd, buf, len); /* packet content */
 }
 
 int handle_packet(void) {
@@ -251,15 +252,16 @@ int main(int argc, char *argv[]) {
   int n,opt;
   cfg.now=time(NULL);
 
-  while ( (opt=getopt(argc,argv,"vi:h")) != -1) {
+  while ( (opt=getopt(argc,argv,"vi:o:h")) != -1) {
     switch(opt) {
       case 'v': cfg.verbose++; break;
       case 'i': cfg.dev=strdup(optarg); break; 
+      case 'o': cfg.out=strdup(optarg); break; 
       case 'h': default: usage(); break;
     }
   }
 
-  cfg.out_fd = open("out.pcap",O_TRUNC|O_CREAT|O_WRONLY, 0644);
+  cfg.out_fd = open(cfg.out,O_TRUNC|O_CREAT|O_WRONLY, 0644);
   if (cfg.out_fd < 0) {
     fprintf(stderr,"open: %s\n", strerror(errno));
     goto done;
