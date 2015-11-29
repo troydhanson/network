@@ -53,9 +53,9 @@ struct {
   int epoll_fd;
   int out_fd;
   struct ring ring;
-  size_t ring_block_sz;
-  size_t ring_block_nr;
-  size_t ring_frame_sz;
+  unsigned ring_block_sz; /* see comments in initialization below */
+  unsigned ring_block_nr;
+  unsigned ring_frame_sz; /* with TPACKET_V3, frame sizes vary; must be a max?*/
 } cfg = {
   .dev = "eth0",
   .out = "test.pcap",
@@ -63,17 +63,20 @@ struct {
   .signal_fd = -1,
   .epoll_fd = -1,
   .out_fd = -1,
-  .ring_block_sz = 1 << 22,
+  .ring_block_sz = 1 << 22, /*4 mb; want powers of two due to kernel allocator*/
   .ring_block_nr = 64,
-  .ring_frame_sz = 1 << 11,
+  .ring_frame_sz = 1 << 11, /* 2048 bytes (expect MTU of 1500 plus a header */
 };
 
 void usage() {
   fprintf(stderr,"usage: %s [-v] [options]\n"
-                 " options:      -i <eth>        (interface name)\n"
-                 "               -o <file.pcap>  (output file)\n"
-                 "\n",
-          cfg.prog);
+       " options: \n"
+       " -i <eth>         -interface name\n"
+       " -o <file.pcap>   -output file\n"
+       " -B <num-blocks>  -packet ring num-blocks e.g. 64\n"
+       " -S <block-size>  -packet ring block size log2 (e.g. 22 = 4mb)\n"
+       " -F <frame-size>  -max frame (packet + header) size (e.g. 2048)\n"
+       "\n", cfg.prog);
   exit(-1);
 }
 
@@ -102,7 +105,7 @@ int setup_rx(void) {
     goto done;
   }
   
-  /* PACKET_RX_RING comes in multiple versions. choose 3. */
+  /* PACKET_RX_RING comes in multiple versions. TPACKET_V3 is used here */
   int v = TPACKET_V3;
   ec = setsockopt(cfg.rx_fd, SOL_PACKET, PACKET_VERSION, &v, sizeof(v));
   if (ec < 0) {
@@ -115,10 +118,18 @@ int setup_rx(void) {
   cfg.ring.req.tp_block_size = cfg.ring_block_sz;
   cfg.ring.req.tp_frame_size = cfg.ring_frame_sz;
   cfg.ring.req.tp_block_nr = cfg.ring_block_nr;
-  cfg.ring.req.tp_frame_nr = (cfg.ring_block_sz * cfg.ring_block_nr) / 
+  /* num frames (packets+headers) if every frame is max frame size. with
+   * TPACKET_V3 frame sizes vary, so many more than this can fit in ring */
+  cfg.ring.req.tp_frame_nr = (cfg.ring_block_sz * cfg.ring_block_nr) /
                              cfg.ring_frame_sz;
-  cfg.ring.req.tp_retire_blk_tov = 60;
-  cfg.ring.req.tp_feature_req_word = TP_FT_REQ_FILL_RXHASH;
+  cfg.ring.req.tp_retire_blk_tov = 60; /* timeout on block poll ? */
+  cfg.ring.req.tp_feature_req_word = TP_FT_REQ_FILL_RXHASH;  /* ? */
+  if (cfg.verbose) {
+    fprintf(stderr, "setting up PACKET_RX_RING:\n"
+                   " (%u blocks * %u bytes per block) = %u bytes\n",
+                   cfg.ring_block_nr, cfg.ring_block_sz,
+                   cfg.ring_block_nr * cfg.ring_block_sz);
+  }
   ec = setsockopt(cfg.rx_fd, SOL_PACKET, PACKET_RX_RING, &cfg.ring.req, 
                    sizeof(cfg.ring.req)); 
   if (ec < 0) {
@@ -243,11 +254,14 @@ int main(int argc, char *argv[]) {
   int n,opt;
   cfg.now=time(NULL);
 
-  while ( (opt=getopt(argc,argv,"vi:o:h")) != -1) {
+  while ( (opt=getopt(argc,argv,"vi:o:B:S:F:h")) != -1) {
     switch(opt) {
       case 'v': cfg.verbose++; break;
       case 'i': cfg.dev=strdup(optarg); break; 
       case 'o': cfg.out=strdup(optarg); break; 
+      case 'B': cfg.ring_block_nr=atoi(optarg); break; 
+      case 'S': cfg.ring_block_sz = 1 << (unsigned)atoi(optarg); break;
+      case 'F': cfg.ring_frame_sz=atoi(optarg); break; 
       case 'h': default: usage(); break;
     }
   }
