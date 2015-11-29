@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <time.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -38,6 +39,7 @@
 struct ring {
   struct iovec *rd;
   uint8_t *map;
+  size_t map_len;
   struct tpacket_req3 req;
 };
 
@@ -137,7 +139,15 @@ int setup_rx(void) {
     goto done;
   }
 
-  /* map the ring buffer that we'll share with kernel */
+  /* now map the ring buffer we described above */
+  cfg.ring.map_len = cfg.ring.req.tp_block_size * cfg.ring.req.tp_block_nr;
+  cfg.ring.map = mmap(NULL, cfg.ring.map_len, PROT_READ|PROT_WRITE, 
+                      MAP_SHARED|MAP_LOCKED, cfg.rx_fd, 0);
+  if (cfg.ring.map == MAP_FAILED) {
+    fprintf(stderr,"mmap: %s\n", strerror(errno));
+    goto done;
+  }
+
   /* malloc something */
 
   /* bind to receive the packets from just one interface */
@@ -320,6 +330,8 @@ done:
   }
   if (cfg.signal_fd != -1) close(cfg.signal_fd);
   if (cfg.epoll_fd != -1) close(cfg.epoll_fd);
-  /* FIXME munmap the ring and associated malloc */
+  if (cfg.ring.map && (cfg.ring.map != MAP_FAILED)) {
+    munmap(cfg.ring.map, cfg.ring.map_len);
+  }
   return 0;
 }
