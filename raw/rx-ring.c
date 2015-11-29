@@ -253,17 +253,18 @@ int handle_signal(void) {
 }
 
 /* dump a single packet. our timestamp has 1sec resolution */
-void dump(char *buf, size_t len) {
-  unsigned len32 = (unsigned)len;
+void dump(uint8_t *buf, size_t origlen, size_t snaplen) {
+  unsigned snaplen32 = (unsigned)snaplen;
+  unsigned origlen32 = (unsigned)origlen;
   unsigned zero = 0;
   unsigned now = (unsigned)cfg.now;
 
   write(cfg.out_fd, &now, sizeof(uint32_t));  /* ts_sec */
   write(cfg.out_fd, &zero, sizeof(uint32_t)); /* ts_usec */
-  write(cfg.out_fd, &len32, sizeof(uint32_t)); /* caplen */
-  write(cfg.out_fd, &len32, sizeof(uint32_t)); /* len */
+  write(cfg.out_fd, &snaplen32, sizeof(uint32_t)); /* caplen */
+  write(cfg.out_fd, &origlen32, sizeof(uint32_t)); /* len */
 
-  write(cfg.out_fd, buf, len); /* packet content */
+  write(cfg.out_fd, buf, snaplen); /* packet content */
 }
 
 struct block_desc *get_block_addr(unsigned block_num) {
@@ -276,7 +277,7 @@ struct block_desc *get_block_addr(unsigned block_num) {
 
 int handle_block(void) {
   struct block_desc *pbd;
-  int rc=-1;
+  int rc=-1, i;
 
   pbd = get_block_addr( cfg.ring_cur_block );
 
@@ -284,6 +285,14 @@ int handle_block(void) {
   assert(pbd->h1.block_status & TP_STATUS_USER);
 
   /* dump the block frames */
+  int num_pkts = pbd->h1.num_pkts;
+  struct tpacket3_hdr *ppd;
+  ppd = (struct tpacket3_hdr*) ((uint8_t*)pbd + pbd->h1.offset_to_first_pkt);
+  for(i=0; i < num_pkts; i++) {
+    uint8_t *frame_data = (uint8_t*)ppd + ppd->tp_mac;
+    dump(frame_data, ppd->tp_len, ppd->tp_snaplen);
+    ppd = (struct tpacket3_hdr*) ((uint8_t*)ppd + ppd->tp_next_offset);
+  }
 
 
   /* tell the kernel the block is again free */
