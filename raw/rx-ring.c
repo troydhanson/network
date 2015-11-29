@@ -183,8 +183,32 @@ int setup_rx(void) {
   return rc;
 }
 
-void periodic_work() {
+int periodic_work() {
+  int rc=-1, ec;
   cfg.now = time(NULL);
+
+  if (cfg.losing) {
+    fprintf(stderr,"packets lost\n");
+    cfg.losing = 0;
+  }
+
+  struct tpacket_stats_v3 stats;
+  socklen_t len = sizeof(stats);
+
+  ec = getsockopt(cfg.rx_fd, SOL_PACKET, PACKET_STATISTICS, &stats, &len);
+  if (ec < 0) {
+    fprintf(stderr,"getsockopt PACKET_STATISTICS: %s\n", strerror(errno));
+    goto done;
+  }
+
+  fprintf(stderr, "Received packets: %u\n", stats.tp_packets);
+  fprintf(stderr, "Dropped packets:  %u\n", stats.tp_drops);
+  fprintf(stderr, "Freeze_q_cnt:     %u\n", stats.tp_freeze_q_cnt);
+
+  rc = 0;
+
+ done:
+  return rc;
 }
 
 int new_epoll(int events, int fd) {
@@ -213,7 +237,7 @@ int handle_signal(void) {
   switch(info.ssi_signo) {
     case SIGALRM: 
       cfg.ticks++;
-      periodic_work();
+      if (periodic_work() < 0) goto done;
       alarm(1); 
       break;
     default: 
@@ -260,7 +284,7 @@ int handle_block(void) {
   assert(pbd->h1.block_status & TP_STATUS_USER);
 
   /* dump the block frames */
-  // dump(buf,nr);
+
 
   /* tell the kernel the block is again free */
   pbd->h1.block_status = TP_STATUS_KERNEL;
