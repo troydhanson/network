@@ -29,18 +29,22 @@
 #include <net/if.h>
 #include <arpa/inet.h>
 
-/* the ring includes an mmap'd region comprised of blocks. the iovec
- * point to these blocks. these blocks are the units of polling. a 
- * block is filled with packet frames and status bits. the ring of blocks
- * is shared between the kernel which populates it and this application. 
- * the application returns a block to the kernel by setting a bit flag. 
- * because the ring head is always where the next awaited packet goes,
- * it suffices to poll and then read this slot (check its status bit). */
+/* the ring includes an mmap'd region comprised of blocks filled with packets. 
+ * these blocks are the units of polling.  the ring of blocks is shared between
+ * the kernel which populates it and this application.  the application returns
+ * a block to the kernel by setting a bit flag.  because the ring head is where
+ * the next awaited packet goes, it suffices to poll and then check this slot.*/
 struct ring {
-  struct iovec *rd;
   uint8_t *map;
   size_t map_len;
   struct tpacket_req3 req;
+};
+
+/* the next struct is placed at the start of a block when kernel populates it */
+struct block_desc {
+  uint32_t version;
+  uint32_t offset_to_priv;
+  struct tpacket_hdr_v1 h1;
 };
 
 struct {
@@ -50,6 +54,7 @@ struct {
   char *dev;
   char *out;
   int ticks;
+  int losing;
   int rx_fd;
   int signal_fd;
   int epoll_fd;
@@ -58,6 +63,7 @@ struct {
   unsigned ring_block_sz; /* see comments in initialization below */
   unsigned ring_block_nr;
   unsigned ring_frame_sz; /* with TPACKET_V3, frame sizes vary; must be a max?*/
+  unsigned ring_cur_block; /* our position in the ring buffer (block number) */
 } cfg = {
   .dev = "eth0",
   .out = "test.pcap",
@@ -148,8 +154,6 @@ int setup_rx(void) {
     goto done;
   }
 
-  /* malloc something */
-
   /* bind to receive the packets from just one interface */
   struct sockaddr_ll sl;
   memset(&sl, 0, sizeof(sl));
@@ -238,10 +242,34 @@ void dump(char *buf, size_t len) {
   write(cfg.out_fd, buf, len); /* packet content */
 }
 
-int handle_packet(void) {
+struct block_desc *get_block_addr(unsigned block_num) {
+  struct block_desc *pbd;
+  
+  pbd = (struct block_desc*)(cfg.ring.map + (cfg.ring_block_sz * block_num));
+
+  return pbd;
+}
+
+int handle_block(void) {
+  struct block_desc *pbd;
   int rc=-1;
 
+  pbd = get_block_addr( cfg.ring_cur_block );
+
+  /* here if epoll indicated packet readiness */
+  assert(pbd->h1.block_status & TP_STATUS_USER);
+
+  /* dump the block frames */
   // dump(buf,nr);
+
+  /* tell the kernel the block is again free */
+  pbd->h1.block_status = TP_STATUS_KERNEL;
+
+  /* detect packet drops */
+  if (pbd->h1.block_status & TP_STATUS_LOSING) cfg.losing = 1;
+
+  /* advance to next block */
+  cfg.ring_cur_block = (cfg.ring_cur_block + 1 ) % cfg.ring_block_nr;
 
   rc = 0;
 
@@ -319,7 +347,7 @@ int main(int argc, char *argv[]) {
   while (epoll_wait(cfg.epoll_fd, &ev, 1, -1) > 0) {
     if (cfg.verbose > 1)  fprintf(stderr,"epoll reports fd %d\n", ev.data.fd);
     if      (ev.data.fd == cfg.signal_fd)   { if (handle_signal() < 0) goto done; }
-    else if (ev.data.fd == cfg.rx_fd)       { if (handle_packet() < 0) goto done; }
+    else if (ev.data.fd == cfg.rx_fd)       { if (handle_block() < 0) goto done; }
   }
 
 done:
