@@ -20,8 +20,9 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <linux/if_packet.h>
-#include <net/ethernet.h>
 #include <net/if.h>
+#include <net/ethernet.h>
+#include <arpa/inet.h>
 
 struct {
   int verbose;
@@ -159,7 +160,7 @@ int handle_packet(void) {
   ssize_t nr;
   struct tpacket_auxdata *pa; /* for PACKET_AUXDATA; see packet(7) */
   struct cmsghdr *cmsg;
-  struct _u {
+  struct {
     struct cmsghdr h;
     struct tpacket_auxdata a;
   } u;

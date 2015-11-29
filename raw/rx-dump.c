@@ -3,10 +3,9 @@
  * 
  * see packet(7)
  *
- * This program is a bit of a hack. It writes a roughly pcap-
- * formatted file. The global header and packet headers are fake.
- * The packet content is dumped from the raw socket. This is a 
- * test program to sanity check the received packet data.
+ * This is a test program to sanity check the received packet
+ * data by dumping it out in pcap format so it can be analyzed
+ * in tcpdump. 
  *
  */
 
@@ -28,6 +27,7 @@
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
 #include <net/if.h>
+#include <arpa/inet.h>
 
 struct {
   int verbose;
@@ -167,8 +167,8 @@ int handle_signal(void) {
   return rc;
 }
 
-/* this is a hackish single packet entry in pcap format */
-int dump(char *buf, size_t len) {
+/* dump a single packet. our timestamp has 1sec resolution */
+void dump(char *buf, size_t len) {
   unsigned len32 = (unsigned)len;
   unsigned zero = 0;
   unsigned now = (unsigned)cfg.now;
@@ -186,7 +186,7 @@ int handle_packet(void) {
   ssize_t nr;
   struct tpacket_auxdata *pa; /* for PACKET_AUXDATA; see packet(7) */
   struct cmsghdr *cmsg;
-  struct _u {
+  struct {
     struct cmsghdr h;
     struct tpacket_auxdata a;
   } u;
@@ -194,11 +194,6 @@ int handle_packet(void) {
   /* we get the packet and metadata via recvmsg */
   struct msghdr msgh;
   memset(&msgh, 0, sizeof(msgh));
-
-  /* 'name' is source address. TODO redundant if parsing outselves? */
-  char name[100];
-  msgh.msg_name = name; 
-  msgh.msg_namelen = sizeof(name); 
 
   /* ancillary data; we requested packet metadata (PACKET_AUXDATA) */
   msgh.msg_control = &u;

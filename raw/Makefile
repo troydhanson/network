@@ -2,6 +2,8 @@ PROGS=rx rx-dump
 OBJS=$(patsubst %,%.o,$(PROGS))
 all: $(OBJS) $(PROGS) 
 
+CFLAGS=-g -Wall
+
 # static pattern rule: multiple targets 
 
 $(OBJS): %.o: %.c
