@@ -1,11 +1,10 @@
 /* 
- * Use Linux AF_PACKET/SOCK_RAW with PACKET_RX_RING for rx.
+ * Use a Linux AF_PACKET socket to read packets, bypassing the network stack.
  * 
  * see packet(7)
  *
- * This is a test program to sanity check the received packet
- * data by dumping it out in pcap format so it can be analyzed
- * in tcpdump. 
+ * This is a test program to sanity check the received packet data by dumping 
+ * it out in pcap format so it can be analyzed in tcpdump. 
  *
  */
 

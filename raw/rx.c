@@ -1,9 +1,9 @@
 /* 
- * Use Linux AF_PACKET/SOCK_RAW with PACKET_RX_RING for rx.
+ * Use a Linux AF_PACKET socket to read packets, bypassing the network stack.
  * 
  * see packet(7)
  *
- * also 
+ * also see
  *  sudo apt-get install linux-doc
  *  zcat /usr/share/doc/linux-doc/networking/packet_mmap.txt.gz
  *
