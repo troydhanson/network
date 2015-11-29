@@ -286,6 +286,7 @@ int handle_block(void) {
 
   /* dump the block frames */
   int num_pkts = pbd->h1.num_pkts;
+  fprintf(stderr,"block has %u packets\n", num_pkts);
   struct tpacket3_hdr *ppd;
   ppd = (struct tpacket3_hdr*) ((uint8_t*)pbd + pbd->h1.offset_to_first_pkt);
   for(i=0; i < num_pkts; i++) {
