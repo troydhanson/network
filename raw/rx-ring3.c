@@ -131,7 +131,7 @@ int setup_rx(void) {
   cfg.ring.req.tp_frame_nr = (cfg.ring_block_sz * cfg.ring_block_nr) /
                              cfg.ring_frame_sz;
   cfg.ring.req.tp_retire_blk_tov = 60; /* timeout on block poll ? */
-  cfg.ring.req.tp_feature_req_word = TP_FT_REQ_FILL_RXHASH;  /* ? */
+  cfg.ring.req.tp_feature_req_word = 0; /* TP_FT_REQ_FILL_RXHASH; */  /* ? */
   if (cfg.verbose) {
     fprintf(stderr, "setting up PACKET_RX_RING:\n"
                    " (%u blocks * %u bytes per block) = %u bytes\n",
