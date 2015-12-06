@@ -40,13 +40,6 @@ struct ring {
   struct tpacket_req3 req;
 };
 
-/* the next struct is placed at the start of a block when kernel populates it */
-struct block_desc {
-  uint32_t version;
-  uint32_t offset_to_priv;
-  struct tpacket_hdr_v1 h1;
-};
-
 struct {
   int verbose;
   time_t now;
@@ -130,8 +123,8 @@ int setup_rx(void) {
    * TPACKET_V3 frame sizes vary, so many more than this can fit in ring */
   cfg.ring.req.tp_frame_nr = (cfg.ring_block_sz * cfg.ring_block_nr) /
                              cfg.ring_frame_sz;
-  cfg.ring.req.tp_retire_blk_tov = 60; /* timeout on block poll ? */
-  cfg.ring.req.tp_feature_req_word = 0; /* TP_FT_REQ_FILL_RXHASH; */  /* ? */
+  //cfg.ring.req.tp_retire_blk_tov = 1; /* timeout on block poll ? */
+  //cfg.ring.req.tp_feature_req_word = 0; /* TP_FT_REQ_FILL_RXHASH; */  /* ? */
   fprintf(stderr, "setting up PACKET_RX_RING:\n"
                  " (%u blocks * %u bytes per block) = %u bytes\n",
                  cfg.ring_block_nr, cfg.ring_block_sz,
@@ -184,6 +177,10 @@ int setup_rx(void) {
 int periodic_work() {
   int rc=-1, ec;
   cfg.now = time(NULL);
+
+  // we do a gratuitous check for data. with TPACKET_V3 i have seen it leave
+  // a single packet in the ring without waking up the poll.
+  handle_block(); 
 
   if (cfg.losing) {
     fprintf(stderr,"packets lost\n");
@@ -265,40 +262,42 @@ void dump(uint8_t *buf, size_t origlen, size_t snaplen) {
   write(cfg.out_fd, buf, snaplen); /* packet content */
 }
 
-struct block_desc *get_block_addr(unsigned block_num) {
-  struct block_desc *pbd;
+struct tpacket_block_desc *get_block_addr(unsigned block_num) {
+  struct tpacket_block_desc *pbd;
   
-  pbd = (struct block_desc*)(cfg.ring.map + (cfg.ring_block_sz * block_num));
+  pbd = (struct tpacket_block_desc*)(cfg.ring.map + (cfg.ring_block_sz * block_num));
 
   return pbd;
 }
 
 int handle_block(void) {
-  struct block_desc *pbd;
+  struct tpacket_block_desc *pbd;
   int rc=-1, i;
 
   pbd = get_block_addr( cfg.ring_cur_block );
 
   /* here if epoll indicated packet readiness */
-  assert(pbd->h1.block_status & TP_STATUS_USER);
+  if ((pbd->hdr.bh1.block_status & TP_STATUS_USER) == 0) {
+    fprintf(stderr,"no data available, polling...\n");
+    return 0;
+  }
 
   /* dump the block frames */
-  int num_pkts = pbd->h1.num_pkts;
+  int num_pkts = pbd->hdr.bh1.num_pkts;
   fprintf(stderr,"block has %u packets\n", num_pkts);
   struct tpacket3_hdr *ppd;
-  ppd = (struct tpacket3_hdr*) ((uint8_t*)pbd + pbd->h1.offset_to_first_pkt);
+  ppd = (struct tpacket3_hdr*) ((uint8_t*)pbd + pbd->hdr.bh1.offset_to_first_pkt);
   for(i=0; i < num_pkts; i++) {
     uint8_t *frame_data = (uint8_t*)ppd + ppd->tp_mac;
     dump(frame_data, ppd->tp_len, ppd->tp_snaplen);
     ppd = (struct tpacket3_hdr*) ((uint8_t*)ppd + ppd->tp_next_offset);
   }
 
+  /* detect packet drops */
+  if (pbd->hdr.bh1.block_status & TP_STATUS_LOSING) cfg.losing = 1;
 
   /* tell the kernel the block is again free */
-  pbd->h1.block_status = TP_STATUS_KERNEL;
-
-  /* detect packet drops */
-  if (pbd->h1.block_status & TP_STATUS_LOSING) cfg.losing = 1;
+  pbd->hdr.bh1.block_status = TP_STATUS_KERNEL;
 
   /* advance to next block */
   cfg.ring_cur_block = (cfg.ring_cur_block + 1 ) % cfg.ring_block_nr;
