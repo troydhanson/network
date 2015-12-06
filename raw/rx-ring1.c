@@ -12,6 +12,11 @@
  * The application and kernel communicate the head and tail of
  * the ring through tp_status field (TP_STATUS_[USER|KERNEL]).
  *
+ * For education try making the ring so small that it fits only
+ * two packets (sudo ./rx-ring1 -B 1 -S 12 -v). That's a single
+ * block of size 2^12 (4096 bytes) holding two 2048-byte slots.
+ * That provokes some packet loss and confirms the reporting.
+ *
  */
 
 #include <errno.h>
@@ -209,8 +214,7 @@ int periodic_work() {
     cfg.losing = 0;
   }
 
-#if 0
-  struct tpacket_stats_v3 stats; /* FIXME */
+  struct tpacket_stats stats;  /* see /usr/include/linux/if_packet.h */
   socklen_t len = sizeof(stats);
 
   int ec = getsockopt(cfg.rx_fd, SOL_PACKET, PACKET_STATISTICS, &stats, &len);
@@ -221,11 +225,10 @@ int periodic_work() {
 
   fprintf(stderr, "Received packets: %u\n", stats.tp_packets);
   fprintf(stderr, "Dropped packets:  %u\n", stats.tp_drops);
-  fprintf(stderr, "Freeze_q_cnt:     %u\n", stats.tp_freeze_q_cnt);
-#endif
 
   rc = 0;
 
+ done:
   return rc;
 }
 
@@ -254,8 +257,9 @@ int handle_signal(void) {
 
   switch(info.ssi_signo) {
     case SIGALRM: 
-      cfg.ticks++;
-      if (periodic_work() < 0) goto done;
+      if ((++cfg.ticks % 10) == 0) {
+        if (periodic_work() < 0) goto done;
+      }
       alarm(1); 
       break;
     default: 
@@ -293,12 +297,10 @@ int handle_ring(void) {
     /* check if the packet is ready */
     if ((hdr->tp_status & TP_STATUS_USER) == 0) goto done;
 
-    if (cfg.verbose) {
-      fprintf(stderr,"idx: %x len:%u snaplen:%u sec:%u usec:%u status: %s %s\n",
-       cfg.ring_curr_idx, hdr->tp_len, hdr->tp_snaplen, hdr->tp_sec, hdr->tp_usec,
-       ((hdr->tp_status & TP_STATUS_USER) ?   "TP_STATUS_USER" : ""),
-       ((hdr->tp_status & TP_STATUS_LOSING) ? "TP_STATUS_LOSING" : ""));
-    }
+    fprintf(stderr,"idx: %x len:%u snaplen:%u sec:%u usec:%u status: %s %s\n",
+     cfg.ring_curr_idx, hdr->tp_len, hdr->tp_snaplen, hdr->tp_sec, hdr->tp_usec,
+     ((hdr->tp_status & TP_STATUS_USER) ?   "TP_STATUS_USER" : ""),
+     ((hdr->tp_status & TP_STATUS_LOSING) ? "TP_STATUS_LOSING" : ""));
 
     uint8_t *mac = cur + hdr->tp_mac;
     dump(mac, hdr->tp_len, hdr->tp_snaplen, hdr->tp_sec, hdr->tp_usec);
