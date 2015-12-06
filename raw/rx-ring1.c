@@ -60,9 +60,10 @@ struct {
   int out_fd;
   struct ring ring;
   unsigned ring_block_sz; /* see comments in initialization below */
-  unsigned ring_block_nr;
-  unsigned ring_frame_sz;
-  unsigned ring_curr_idx;  /* our buffer position in the ring buffer */
+  unsigned ring_block_nr; /* number of blocks of sz above */
+  unsigned ring_frame_sz; /* snaplen */
+  unsigned ring_curr_idx; /* slot index in ring buffer */
+  unsigned ring_frame_nr; /* redundant, total frame count */
 } cfg = {
   .dev = "eth0",
   .out = "test.pcap",
@@ -112,6 +113,8 @@ int setup_rx(void) {
     goto done;
   }
 
+  cfg.ring_frame_nr = (cfg.ring_block_sz*cfg.ring_block_nr) / cfg.ring_frame_sz;
+
   /* want all link layer protocol packets (linux/if_ether.h) */
   int protocol = htons(ETH_P_ALL);
 
@@ -144,15 +147,14 @@ int setup_rx(void) {
   cfg.ring.req.tp_block_size = cfg.ring_block_sz; /* Min sz of contig block */
   cfg.ring.req.tp_frame_size = cfg.ring_frame_sz; /* Size of frame/snaplen */
   cfg.ring.req.tp_block_nr = cfg.ring_block_nr;   /* Number of blocks */
-  cfg.ring.req.tp_frame_nr = (cfg.ring_block_sz * cfg.ring_block_nr) /
-                             cfg.ring_frame_sz;
+  cfg.ring.req.tp_frame_nr = cfg.ring_frame_nr;   /* Total number of frames */
   fprintf(stderr, "setting up PACKET_RX_RING:\n"
                   " RING: (%u blocks * %u bytes per block) = %u bytes (%u MB)\n"
                   " PACKETS: @(%u bytes/packet) = %u packets\n",
                  cfg.ring_block_nr, cfg.ring_block_sz,
                  cfg.ring_block_nr * cfg.ring_block_sz,
                  cfg.ring_block_nr * cfg.ring_block_sz / (1024 * 1024),
-                 cfg.ring_frame_sz, cfg.ring.req.tp_frame_nr);
+                 cfg.ring_frame_sz, cfg.ring_frame_nr);
   ec = setsockopt(cfg.rx_fd, SOL_PACKET, PACKET_RX_RING, &cfg.ring.req, 
                    sizeof(cfg.ring.req)); 
   if (ec < 0) {
@@ -202,12 +204,12 @@ int periodic_work() {
   int rc=-1;
   cfg.now = time(NULL);
 
-#if 0
   if (cfg.losing) {
     fprintf(stderr,"packets lost\n");
     cfg.losing = 0;
   }
 
+#if 0
   struct tpacket_stats_v3 stats; /* FIXME */
   socklen_t len = sizeof(stats);
 
@@ -284,19 +286,44 @@ void dump(uint8_t *buf, size_t origlen, size_t snaplen) {
 }
 
 int handle_ring(void) {
-  int rc=-1;
 
-  /* this is the address of the current frame */
-#if 0
-  uint8_t *cur = cfg.ring.map + (ring_curr_idx * cfg.ring_frame_sz);
+  /* plow through the ready packets in the ring */
+  while (1) {
 
-  struct tpacket_hdr *hdr = cur; /* precedes each packet in ring */
-#endif
+    /* get address of the current slot (metadata header, pad, packet) */
+    uint8_t *cur = cfg.ring.map + cfg.ring_curr_idx * cfg.ring_frame_sz;
 
-  rc = 0;
+    /* struct tpacket_hdr is defined in /usr/include/linux/if_packet.h */
+    struct tpacket_hdr *hdr = (struct tpacket_hdr *)cur;
 
- //done:
-  return rc;
+    if (cfg.verbose) {
+      fprintf(stderr,"hdr->status: %s %s %s\n", 
+         ((hdr->tp_status & TP_STATUS_USER) ?   "TP_STATUS_USER" : ""),
+         ((hdr->tp_status & TP_STATUS_LOSING) ? "TP_STATUS_LOSING" : ""),
+         ((hdr->tp_status == TP_STATUS_KERNEL) ? "TP_STATUS_KERNEL" : "")
+      );
+    }
+
+    /* check if the packet is ready */
+    if ((hdr->tp_status & TP_STATUS_USER) == 0) goto done;
+
+    if (cfg.verbose) {
+      fprintf(stderr,"packet len:%u snaplen:%u\n", hdr->tp_len, hdr->tp_snaplen);
+      fprintf(stderr,"packet sec:%u usec:%u\n", hdr->tp_sec, hdr->tp_usec);
+    }
+
+    /* note packet drop condition */
+    if (hdr->tp_status & TP_STATUS_LOSING) cfg.losing=1;
+
+    /* return the packet. TP_STATUS_KERNEL is 0 not a bit */
+    hdr->tp_status = TP_STATUS_KERNEL;
+
+    /* next packet */
+    cfg.ring_curr_idx = (cfg.ring_curr_idx + 1) % cfg.ring_frame_nr;
+  }
+
+ done:
+  return 0;
 }
 
 const uint8_t pcap_glb_hdr[] = {
