@@ -3,8 +3,14 @@
  * 
  * see packet(7)
  *
- * Ring setup and handling modeled on the PACKET_V3 example in
  * linux-doc /usr/share/doc/linux-doc/networking/packet_mmap.txt.gz
+ *
+ * With PACKET_RX_RING (in version TPACKET_V1)
+ * the ring buffer consists of an array of packet slots.
+ * Each slot is of size tp_snaplen.
+ * Each packet is preceded by a metadata structure in the slot.
+ * The application and kernel communicate the head and tail of
+ * the ring through tp_status field (TP_STATUS_[USER|KERNEL]).
  *
  */
 
@@ -30,21 +36,14 @@
 #include <arpa/inet.h>
 
 /* the ring includes an mmap'd region comprised of blocks filled with packets. 
- * these blocks are the units of polling.  the ring of blocks is shared between
- * the kernel which populates it and this application.  the application returns
- * a block to the kernel by setting a bit flag.  because the ring head is where
- * the next awaited packet goes, it suffices to poll and then check this slot.*/
+ * in application (user) space its a contiguous mmap'd region, in kernel space
+ * it is a number of discrete blocks. hence the description of the ring as 
+ * blocks - see tpacket_req initialization in setup_rx
+ */ 
 struct ring {
   uint8_t *map;
   size_t map_len;
-  struct tpacket_req3 req;
-};
-
-/* the next struct is placed at the start of a block when kernel populates it */
-struct block_desc {
-  uint32_t version;
-  uint32_t offset_to_priv;
-  struct tpacket_hdr_v1 h1;
+  struct tpacket_req req; /* linux/if_packet.h */
 };
 
 struct {
@@ -62,8 +61,8 @@ struct {
   struct ring ring;
   unsigned ring_block_sz; /* see comments in initialization below */
   unsigned ring_block_nr;
-  unsigned ring_frame_sz; /* with TPACKET_V3, frame sizes vary; must be a max?*/
-  unsigned ring_cur_block; /* our position in the ring buffer (block number) */
+  unsigned ring_frame_sz;
+  unsigned ring_curr_idx; /* our position in the ring buffer */
 } cfg = {
   .dev = "eth0",
   .out = "test.pcap",
@@ -94,7 +93,7 @@ int sigs[] = {SIGHUP,SIGTERM,SIGINT,SIGQUIT,SIGALRM};
 int setup_rx(void) {
   int rc=-1, ec;
 
-  /* any link layer protocol packets (linux/if_ether.h) */
+  /* want all link layer protocol packets (linux/if_ether.h) */
   int protocol = htons(ETH_P_ALL);
 
   /* create the packet socket */
@@ -113,29 +112,28 @@ int setup_rx(void) {
     goto done;
   }
   
-  /* PACKET_RX_RING comes in multiple versions. TPACKET_V3 is used here */
-  int v = TPACKET_V3;
+  /* PACKET_RX_RING comes in multiple versions. TPACKET_V1 is used here */
+  int v = TPACKET_V1;
   ec = setsockopt(cfg.rx_fd, SOL_PACKET, PACKET_VERSION, &v, sizeof(v));
   if (ec < 0) {
     fprintf(stderr,"setsockopt PACKET_VERSION: %s\n", strerror(errno));
     goto done;
   }
 
-  /* PACKET_RX_RING */
+  /* fill out the struct tpacket_req describing the ring buffer */
   memset(&cfg.ring.req, 0, sizeof(cfg.ring.req));
-  cfg.ring.req.tp_block_size = cfg.ring_block_sz;
-  cfg.ring.req.tp_frame_size = cfg.ring_frame_sz;
-  cfg.ring.req.tp_block_nr = cfg.ring_block_nr;
-  /* num frames (packets+headers) if every frame is max frame size. with
-   * TPACKET_V3 frame sizes vary, so many more than this can fit in ring */
+  cfg.ring.req.tp_block_size = cfg.ring_block_sz; /* Min sz of contig block */
+  cfg.ring.req.tp_frame_size = cfg.ring_frame_sz; /* Size of frame/snaplen */
+  cfg.ring.req.tp_block_nr = cfg.ring_block_nr;   /* Number of blocks */
   cfg.ring.req.tp_frame_nr = (cfg.ring_block_sz * cfg.ring_block_nr) /
                              cfg.ring_frame_sz;
-  cfg.ring.req.tp_retire_blk_tov = 60; /* timeout on block poll ? */
-  cfg.ring.req.tp_feature_req_word = 0; /* TP_FT_REQ_FILL_RXHASH; */  /* ? */
   fprintf(stderr, "setting up PACKET_RX_RING:\n"
-                 " (%u blocks * %u bytes per block) = %u bytes\n",
+                  " RING: (%u blocks * %u bytes per block) = %u bytes (%u MB)\n"
+                  " PACKETS: @(%u bytes/packet) = %u packets\n",
                  cfg.ring_block_nr, cfg.ring_block_sz,
-                 cfg.ring_block_nr * cfg.ring_block_sz);
+                 cfg.ring_block_nr * cfg.ring_block_sz,
+                 cfg.ring_block_nr * cfg.ring_block_sz / (1024 * 1024),
+                 cfg.ring_frame_sz, cfg.ring.req.tp_frame_nr);
   ec = setsockopt(cfg.rx_fd, SOL_PACKET, PACKET_RX_RING, &cfg.ring.req, 
                    sizeof(cfg.ring.req)); 
   if (ec < 0) {
@@ -143,7 +141,7 @@ int setup_rx(void) {
     goto done;
   }
 
-  /* now map the ring buffer we described above */
+  /* now map the ring buffer we described above. lock in unswappable memory */
   cfg.ring.map_len = cfg.ring.req.tp_block_size * cfg.ring.req.tp_block_nr;
   cfg.ring.map = mmap(NULL, cfg.ring.map_len, PROT_READ|PROT_WRITE, 
                       MAP_SHARED|MAP_LOCKED, cfg.rx_fd, 0);
@@ -182,18 +180,19 @@ int setup_rx(void) {
 }
 
 int periodic_work() {
-  int rc=-1, ec;
+  int rc=-1;
   cfg.now = time(NULL);
 
+#if 0
   if (cfg.losing) {
     fprintf(stderr,"packets lost\n");
     cfg.losing = 0;
   }
 
-  struct tpacket_stats_v3 stats;
+  struct tpacket_stats_v3 stats; /* FIXME */
   socklen_t len = sizeof(stats);
 
-  ec = getsockopt(cfg.rx_fd, SOL_PACKET, PACKET_STATISTICS, &stats, &len);
+  int ec = getsockopt(cfg.rx_fd, SOL_PACKET, PACKET_STATISTICS, &stats, &len);
   if (ec < 0) {
     fprintf(stderr,"getsockopt PACKET_STATISTICS: %s\n", strerror(errno));
     goto done;
@@ -202,10 +201,10 @@ int periodic_work() {
   fprintf(stderr, "Received packets: %u\n", stats.tp_packets);
   fprintf(stderr, "Dropped packets:  %u\n", stats.tp_drops);
   fprintf(stderr, "Freeze_q_cnt:     %u\n", stats.tp_freeze_q_cnt);
+#endif
 
   rc = 0;
 
- done:
   return rc;
 }
 
@@ -265,43 +264,8 @@ void dump(uint8_t *buf, size_t origlen, size_t snaplen) {
   write(cfg.out_fd, buf, snaplen); /* packet content */
 }
 
-struct block_desc *get_block_addr(unsigned block_num) {
-  struct block_desc *pbd;
-  
-  pbd = (struct block_desc*)(cfg.ring.map + (cfg.ring_block_sz * block_num));
-
-  return pbd;
-}
-
-int handle_block(void) {
-  struct block_desc *pbd;
-  int rc=-1, i;
-
-  pbd = get_block_addr( cfg.ring_cur_block );
-
-  /* here if epoll indicated packet readiness */
-  assert(pbd->h1.block_status & TP_STATUS_USER);
-
-  /* dump the block frames */
-  int num_pkts = pbd->h1.num_pkts;
-  fprintf(stderr,"block has %u packets\n", num_pkts);
-  struct tpacket3_hdr *ppd;
-  ppd = (struct tpacket3_hdr*) ((uint8_t*)pbd + pbd->h1.offset_to_first_pkt);
-  for(i=0; i < num_pkts; i++) {
-    uint8_t *frame_data = (uint8_t*)ppd + ppd->tp_mac;
-    dump(frame_data, ppd->tp_len, ppd->tp_snaplen);
-    ppd = (struct tpacket3_hdr*) ((uint8_t*)ppd + ppd->tp_next_offset);
-  }
-
-
-  /* tell the kernel the block is again free */
-  pbd->h1.block_status = TP_STATUS_KERNEL;
-
-  /* detect packet drops */
-  if (pbd->h1.block_status & TP_STATUS_LOSING) cfg.losing = 1;
-
-  /* advance to next block */
-  cfg.ring_cur_block = (cfg.ring_cur_block + 1 ) % cfg.ring_block_nr;
+int handle_ring(void) {
+  int rc=-1;
 
   rc = 0;
 
@@ -379,7 +343,7 @@ int main(int argc, char *argv[]) {
   while (epoll_wait(cfg.epoll_fd, &ev, 1, -1) > 0) {
     if (cfg.verbose > 1)  fprintf(stderr,"epoll reports fd %d\n", ev.data.fd);
     if      (ev.data.fd == cfg.signal_fd)   { if (handle_signal() < 0) goto done; }
-    else if (ev.data.fd == cfg.rx_fd)       { if (handle_block() < 0) goto done; }
+    else if (ev.data.fd == cfg.rx_fd)       { if (handle_ring() < 0) goto done; }
   }
 
 done:
