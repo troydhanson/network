@@ -270,24 +270,18 @@ int handle_signal(void) {
   return rc;
 }
 
-/* dump a single packet. our timestamp has 1sec resolution */
-void dump(uint8_t *buf, size_t origlen, size_t snaplen) {
-  unsigned snaplen32 = (unsigned)snaplen;
-  unsigned origlen32 = (unsigned)origlen;
-  unsigned zero = 0;
-  unsigned now = (unsigned)cfg.now;
-
-  write(cfg.out_fd, &now, sizeof(uint32_t));  /* ts_sec */
-  write(cfg.out_fd, &zero, sizeof(uint32_t)); /* ts_usec */
-  write(cfg.out_fd, &snaplen32, sizeof(uint32_t)); /* caplen */
-  write(cfg.out_fd, &origlen32, sizeof(uint32_t)); /* len */
-
-  write(cfg.out_fd, buf, snaplen); /* packet content */
+/* dump a single packet in pcap format. */
+void dump(uint8_t *buf, unsigned len, unsigned snaplen, unsigned sec, unsigned usec) {
+  write(cfg.out_fd, &sec, sizeof(uint32_t));       /* ts_sec */
+  write(cfg.out_fd, &usec, sizeof(uint32_t));      /* ts_usec */
+  write(cfg.out_fd, &snaplen, sizeof(uint32_t));   /* snaplen */
+  write(cfg.out_fd, &len, sizeof(uint32_t));       /* len */
+  write(cfg.out_fd, buf, snaplen);                 /* packet content (snaplen bytes) */
 }
 
+/* plow through the ready packets in the ring */
 int handle_ring(void) {
 
-  /* plow through the ready packets in the ring */
   while (1) {
 
     /* get address of the current slot (metadata header, pad, packet) */
@@ -296,26 +290,23 @@ int handle_ring(void) {
     /* struct tpacket_hdr is defined in /usr/include/linux/if_packet.h */
     struct tpacket_hdr *hdr = (struct tpacket_hdr *)cur;
 
-    if (cfg.verbose) {
-      fprintf(stderr,"hdr->status: %s %s %s\n", 
-         ((hdr->tp_status & TP_STATUS_USER) ?   "TP_STATUS_USER" : ""),
-         ((hdr->tp_status & TP_STATUS_LOSING) ? "TP_STATUS_LOSING" : ""),
-         ((hdr->tp_status == TP_STATUS_KERNEL) ? "TP_STATUS_KERNEL" : "")
-      );
-    }
-
     /* check if the packet is ready */
     if ((hdr->tp_status & TP_STATUS_USER) == 0) goto done;
 
     if (cfg.verbose) {
-      fprintf(stderr,"packet len:%u snaplen:%u\n", hdr->tp_len, hdr->tp_snaplen);
-      fprintf(stderr,"packet sec:%u usec:%u\n", hdr->tp_sec, hdr->tp_usec);
+      fprintf(stderr,"idx: %x len:%u snaplen:%u sec:%u usec:%u status: %s %s\n",
+       cfg.ring_curr_idx, hdr->tp_len, hdr->tp_snaplen, hdr->tp_sec, hdr->tp_usec,
+       ((hdr->tp_status & TP_STATUS_USER) ?   "TP_STATUS_USER" : ""),
+       ((hdr->tp_status & TP_STATUS_LOSING) ? "TP_STATUS_LOSING" : ""));
     }
+
+    uint8_t *mac = cur + hdr->tp_mac;
+    dump(mac, hdr->tp_len, hdr->tp_snaplen, hdr->tp_sec, hdr->tp_usec);
 
     /* note packet drop condition */
     if (hdr->tp_status & TP_STATUS_LOSING) cfg.losing=1;
 
-    /* return the packet. TP_STATUS_KERNEL is 0 not a bit */
+    /* return the packet by assigning status word TP_STATUS_KERNEL (0) */
     hdr->tp_status = TP_STATUS_KERNEL;
 
     /* next packet */
