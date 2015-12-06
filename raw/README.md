@@ -3,6 +3,9 @@ sockets can read/write packets to the device, bypassing the network stack.
 They can also capture packets.
 
 * rx       -  recvmsg-based capture 
-* rx-dump  - recvmsg-based capture, writes pcap
+* rx-dump  -  recvmsg-based capture, writes pcap
 * rx-ring1 - `PACKET_RX_RING`-based capture, uses API version `TPACKET_V1`
 * rx-ring3 - `PACKET_RX_RING`-based capture, uses `TPACKET_V3` (has bugs) 
+
+TODO
+* fanout

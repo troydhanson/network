@@ -62,7 +62,7 @@ struct {
   unsigned ring_block_sz; /* see comments in initialization below */
   unsigned ring_block_nr;
   unsigned ring_frame_sz;
-  unsigned ring_curr_idx; /* our position in the ring buffer */
+  unsigned ring_curr_idx;  /* our buffer position in the ring buffer */
 } cfg = {
   .dev = "eth0",
   .out = "test.pcap",
@@ -72,17 +72,17 @@ struct {
   .out_fd = -1,
   .ring_block_sz = 1 << 22, /*4 mb; want powers of two due to kernel allocator*/
   .ring_block_nr = 64,
-  .ring_frame_sz = 1 << 11, /* 2048 bytes (expect MTU of 1500 plus a header */
+  .ring_frame_sz = 1 << 11, /* 2048 for MTU & header, divisor of ring_block_sz*/
 };
 
 void usage() {
   fprintf(stderr,"usage: %s [-v] [options]\n"
        " options: \n"
-       " -i <eth>         -interface name\n"
-       " -o <file.pcap>   -output file\n"
-       " -B <num-blocks>  -packet ring num-blocks e.g. 64\n"
-       " -S <block-size>  -packet ring block size log2 (e.g. 22 = 4mb)\n"
-       " -F <frame-size>  -max frame (packet + header) size (e.g. 2048)\n"
+       " -i <eth>             -interface name\n"
+       " -o <file.pcap>       -output file\n"
+       " -B <num-blocks>      -packet ring num-blocks e.g. 64\n"
+       " -S <log2-block-size> -log2 packet ring block size (e.g. 22 = 4mb)\n"
+       " -F <frame-size>      -max frame (packet + header) size (e.g. 2048)\n"
        "\n", cfg.prog);
   exit(-1);
 }
@@ -92,6 +92,25 @@ int sigs[] = {SIGHUP,SIGTERM,SIGINT,SIGQUIT,SIGALRM};
 
 int setup_rx(void) {
   int rc=-1, ec;
+
+  /* sanity checks on allowable parameters. */
+  if (cfg.ring_block_sz % cfg.ring_frame_sz) {
+    fprintf(stderr,"-S block_sz must be multiple of -F frame_sz\n");
+    goto done;
+  }
+  unsigned page_sz = (unsigned)sysconf(_SC_PAGESIZE);
+  if (cfg.ring_block_sz % page_sz) {
+    fprintf(stderr,"-S block_sz must be multiple of page_sz %u\n", page_sz);
+    goto done;
+  }
+  if (cfg.ring_frame_sz <= TPACKET_HDRLEN) {
+    fprintf(stderr,"-F frame_sz must exceed %u\n", TPACKET_HDRLEN);
+    goto done;
+  }
+  if (cfg.ring_frame_sz % TPACKET_ALIGNMENT) {
+    fprintf(stderr,"-F frame_sz must be a mulitple of %u\n", TPACKET_ALIGNMENT);
+    goto done;
+  }
 
   /* want all link layer protocol packets (linux/if_ether.h) */
   int protocol = htons(ETH_P_ALL);
@@ -266,6 +285,13 @@ void dump(uint8_t *buf, size_t origlen, size_t snaplen) {
 
 int handle_ring(void) {
   int rc=-1;
+
+  /* this is the address of the current frame */
+#if 0
+  uint8_t *cur = cfg.ring.map + (ring_curr_idx * cfg.ring_frame_sz);
+
+  struct tpacket_hdr *hdr = cur; /* precedes each packet in ring */
+#endif
 
   rc = 0;
 
