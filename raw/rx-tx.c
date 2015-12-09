@@ -24,6 +24,7 @@
 #include <net/if.h>
 #include <net/ethernet.h>
 #include <arpa/inet.h>
+#include <assert.h>
 
 #define MAX_PKT 65536
 
@@ -205,6 +206,7 @@ int handle_packet(void) {
   memset(&addr_x, 0, sizeof(addr_x));
   addr_x.sll_family = AF_PACKET;
   memcpy(addr_x.sll_addr, cfg.pkt, 6); /* copy dst mac from packet */
+  assert(addr_r.sll_halen == 6);
   addr_x.sll_halen = addr_r.sll_halen;
   addr_x.sll_ifindex = cfg.odev_ifindex;
   addr_x.sll_protocol = addr_r.sll_protocol;
