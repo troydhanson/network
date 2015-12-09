@@ -7,6 +7,7 @@ They can also capture packets.
 * rx-ring1 - `PACKET_RX_RING`-based capture, uses API version `TPACKET_V1`
 * rx-ring2 - `PACKET_RX_RING`-based capture, uses API version `TPACKET_V2`
 * rx-ring3 - `PACKET_RX_RING`-based capture, uses API version `TPACKET_V3` 
+* rx-tx    - recvfrom/sendto frame repeater
 
 The difference between `TPACKET_V1` and `TPACKET_V2` is minimal. There was
 a change to the `tpacket_hdr` structure to use explicit sized types.  Also
