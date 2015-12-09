@@ -11,6 +11,7 @@
 
 #include <errno.h>
 #include <sys/epoll.h>
+#include <sys/types.h>
 #include <sys/signalfd.h>
 #include <signal.h>
 #include <stdio.h>
@@ -184,19 +185,35 @@ int handle_signal(void) {
 
 int handle_packet(void) {
   int rc=-1;
-  ssize_t nr;
+  ssize_t nr,nt;
 
-  struct sockaddr_ll addr;
-  socklen_t addrlen = sizeof(addr);
+  struct sockaddr_ll addr_r, addr_x;
+  socklen_t addrlen = sizeof(addr_r);
 
   nr = recvfrom(cfg.rx_fd, cfg.pkt, sizeof(cfg.pkt), 0, 
-                (struct sockaddr*)&addr, &addrlen);
+                (struct sockaddr*)&addr_r, &addrlen);
   if (nr <= 0) {
     fprintf(stderr,"recvfrom: %s\n", nr ? strerror(errno) : "eof");
     goto done;
   }
 
-  fprintf(stderr,"received %lu bytes of message data\n", (long)nr);
+  if (cfg.verbose) {
+    fprintf(stderr,"received %lu bytes of message data\n", (long)nr);
+  }
+
+  /* per packet(7) only these five fields should be set on outgoing addr_x */
+  memset(&addr_x, 0, sizeof(addr_x));
+  addr_x.sll_family = AF_PACKET;
+  memcpy(addr_x.sll_addr, cfg.pkt, 6); /* copy dst mac from packet */
+  addr_x.sll_halen = addr_r.sll_halen;
+  addr_x.sll_ifindex = cfg.odev_ifindex;
+  addr_x.sll_protocol = addr_r.sll_protocol;
+
+  nt = sendto(cfg.tx_fd, cfg.pkt, nr, 0, (struct sockaddr*)&addr_x, addrlen);
+  if (nt != nr) {
+    fprintf(stderr,"sendto: %s\n", (nt < 0) ? strerror(errno) : "partial");
+    goto done;
+  }
 
   rc = 0;
 
