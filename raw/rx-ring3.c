@@ -174,38 +174,6 @@ int setup_rx(void) {
   return rc;
 }
 
-int periodic_work() {
-  int rc=-1, ec;
-  cfg.now = time(NULL);
-
-  // we do a gratuitous check for data. with TPACKET_V3 i have seen it leave
-  // a single packet in the ring without waking up the poll.
-  handle_block(); 
-
-  if (cfg.losing) {
-    fprintf(stderr,"packets lost\n");
-    cfg.losing = 0;
-  }
-
-  struct tpacket_stats_v3 stats;
-  socklen_t len = sizeof(stats);
-
-  ec = getsockopt(cfg.rx_fd, SOL_PACKET, PACKET_STATISTICS, &stats, &len);
-  if (ec < 0) {
-    fprintf(stderr,"getsockopt PACKET_STATISTICS: %s\n", strerror(errno));
-    goto done;
-  }
-
-  fprintf(stderr, "Received packets: %u\n", stats.tp_packets);
-  fprintf(stderr, "Dropped packets:  %u\n", stats.tp_drops);
-  fprintf(stderr, "Freeze_q_cnt:     %u\n", stats.tp_freeze_q_cnt);
-
-  rc = 0;
-
- done:
-  return rc;
-}
-
 int new_epoll(int events, int fd) {
   int rc;
   struct epoll_event ev;
@@ -217,33 +185,6 @@ int new_epoll(int events, int fd) {
   if (rc == -1) {
     fprintf(stderr,"epoll_ctl: %s\n", strerror(errno));
   }
-  return rc;
-}
-
-int handle_signal(void) {
-  int rc=-1;
-  struct signalfd_siginfo info;
-  
-  if (read(cfg.signal_fd, &info, sizeof(info)) != sizeof(info)) {
-    fprintf(stderr,"failed to read signal fd buffer\n");
-    goto done;
-  }
-
-  switch(info.ssi_signo) {
-    case SIGALRM: 
-      cfg.ticks++;
-      if (periodic_work() < 0) goto done;
-      alarm(1); 
-      break;
-    default: 
-      fprintf(stderr,"got signal %d\n", info.ssi_signo);  
-      goto done;
-      break;
-  }
-
- rc = 0;
-
- done:
   return rc;
 }
 
@@ -305,6 +246,65 @@ int handle_block(void) {
   rc = 0;
 
  //done:
+  return rc;
+}
+
+int periodic_work() {
+  int rc=-1, ec;
+  cfg.now = time(NULL);
+
+  // we do a gratuitous check for data. with TPACKET_V3 i have seen it leave
+  // a single packet in the ring without waking up the poll.
+  handle_block(); 
+
+  if (cfg.losing) {
+    fprintf(stderr,"packets lost\n");
+    cfg.losing = 0;
+  }
+
+  struct tpacket_stats_v3 stats;
+  socklen_t len = sizeof(stats);
+
+  ec = getsockopt(cfg.rx_fd, SOL_PACKET, PACKET_STATISTICS, &stats, &len);
+  if (ec < 0) {
+    fprintf(stderr,"getsockopt PACKET_STATISTICS: %s\n", strerror(errno));
+    goto done;
+  }
+
+  fprintf(stderr, "Received packets: %u\n", stats.tp_packets);
+  fprintf(stderr, "Dropped packets:  %u\n", stats.tp_drops);
+  fprintf(stderr, "Freeze_q_cnt:     %u\n", stats.tp_freeze_q_cnt);
+
+  rc = 0;
+
+ done:
+  return rc;
+}
+
+int handle_signal(void) {
+  int rc=-1;
+  struct signalfd_siginfo info;
+  
+  if (read(cfg.signal_fd, &info, sizeof(info)) != sizeof(info)) {
+    fprintf(stderr,"failed to read signal fd buffer\n");
+    goto done;
+  }
+
+  switch(info.ssi_signo) {
+    case SIGALRM: 
+      cfg.ticks++;
+      if (periodic_work() < 0) goto done;
+      alarm(1); 
+      break;
+    default: 
+      fprintf(stderr,"got signal %d\n", info.ssi_signo);  
+      goto done;
+      break;
+  }
+
+ rc = 0;
+
+ done:
   return rc;
 }
 
