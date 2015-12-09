@@ -34,6 +34,7 @@ struct {
   char *idev;
   char *odev;
   int odev_ifindex;
+  int nopromisc;
   int ticks;
   int rx_fd;
   int tx_fd;
@@ -52,6 +53,7 @@ void usage() {
   fprintf(stderr,"usage: %s [-v] [options]\n"
                  " options:      -i <eth>     (input interface)\n"
                  "               -o <eth>     (output interface)\n"
+                 "               -P           (non-promisc mode)\n"
                  "\n",
           cfg.prog);
   exit(-1);
@@ -91,6 +93,11 @@ int setup_rx(void) {
   ec = bind(cfg.rx_fd, (struct sockaddr*)&sl, sizeof(sl));
   if (ec < 0) {
     fprintf(stderr,"socket: %s\n", strerror(errno));
+    goto done;
+  }
+
+  if (cfg.nopromisc) {
+    rc = 0;
     goto done;
   }
 
@@ -228,11 +235,12 @@ int main(int argc, char *argv[]) {
   cfg.prog = argv[0];
   int n,opt;
 
-  while ( (opt=getopt(argc,argv,"vi:o:h")) != -1) {
+  while ( (opt=getopt(argc,argv,"vi:o:hP")) != -1) {
     switch(opt) {
       case 'v': cfg.verbose++; break;
       case 'i': cfg.idev=strdup(optarg); break; 
       case 'o': cfg.odev=strdup(optarg); break; 
+      case 'P': cfg.nopromisc=1; break; 
       case 'h': default: usage(); break;
     }
   }
