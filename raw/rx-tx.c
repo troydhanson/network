@@ -35,6 +35,7 @@ struct {
   char *odev;
   int odev_ifindex;
   int nopromisc;
+  int snaplen;
   int ticks;
   int vlan;
   int rx_fd;
@@ -56,6 +57,7 @@ void usage() {
                  "               -o <eth>     (output interface)\n"
                  "               -P           (non-promisc mode)\n"
                  "               -V <vlan>    (inject VLAN tag)\n"
+                 "               -s <snaplen> (tx snaplen bytes)\n"
                  "\n",
           cfg.prog);
   exit(-1);
@@ -239,6 +241,7 @@ int handle_packet(void) {
   addr_x.sll_ifindex = cfg.odev_ifindex;
   addr_x.sll_protocol = addr_r.sll_protocol;
 
+  /* inject 802.1q tag if requested */
   nx = nr;
   if (cfg.vlan) tx = inject_vlan(tx,&nx);
   if (tx == NULL) {
@@ -246,8 +249,11 @@ int handle_packet(void) {
     goto done;
   }
 
+  /* truncate outgoing packet if requested */
+  if (cfg.snaplen && (nx > cfg.snaplen)) nx = cfg.snaplen;
+
   nt = sendto(cfg.tx_fd, tx, nx, 0, (struct sockaddr*)&addr_x, addrlen);
-  if (nt != nr) {
+  if (nt != nx) {
     fprintf(stderr,"sendto: %s\n", (nt < 0) ? strerror(errno) : "partial");
     goto done;
   }
@@ -263,13 +269,14 @@ int main(int argc, char *argv[]) {
   cfg.prog = argv[0];
   int n,opt;
 
-  while ( (opt=getopt(argc,argv,"vi:o:hPV:")) != -1) {
+  while ( (opt=getopt(argc,argv,"vi:o:hPV:s:")) != -1) {
     switch(opt) {
       case 'v': cfg.verbose++; break;
       case 'i': cfg.idev=strdup(optarg); break; 
       case 'o': cfg.odev=strdup(optarg); break; 
       case 'P': cfg.nopromisc=1; break; 
       case 'V': cfg.vlan=atoi(optarg); break; 
+      case 's': cfg.snaplen=atoi(optarg); break; 
       case 'h': default: usage(); break;
     }
   }
