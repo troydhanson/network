@@ -36,6 +36,7 @@ struct {
   int odev_ifindex;
   int nopromisc;
   int ticks;
+  int vlan;
   int rx_fd;
   int tx_fd;
   int signal_fd;
@@ -54,6 +55,7 @@ void usage() {
                  " options:      -i <eth>     (input interface)\n"
                  "               -o <eth>     (output interface)\n"
                  "               -P           (non-promisc mode)\n"
+                 "               -V <vlan>    (inject VLAN tag)\n"
                  "\n",
           cfg.prog);
   exit(-1);
@@ -191,9 +193,30 @@ int handle_signal(void) {
   return rc;
 }
 
+/* inject four bytes to the ethernet frame with an 802.1q vlan tag.
+ * note if this makes MTU exceeded it may result in sendto error */
+#define VLAN_LEN 4
+char buf[MAX_PKT];
+char vlan_tag[VLAN_LEN] = {0x81, 0x00, 0x00, 0x00};
+#define MACS_LEN (2*6)
+char *inject_vlan(char *tx, ssize_t *nx) {
+  if (((*nx) + 4) > MAX_PKT) return NULL;
+  if ((*nx) <= MACS_LEN) return NULL;
+  /* prepare 802.1q tag vlan portion in network order */
+  uint16_t v = htons(cfg.vlan);
+  memcpy(&vlan_tag[2], &v, sizeof(v));
+  /* copy MAC's from original packet, inject 802.1q, copy packet */
+  memcpy(buf,                   tx,            MACS_LEN);
+  memcpy(buf+MACS_LEN,          vlan_tag,      VLAN_LEN);
+  memcpy(buf+MACS_LEN+VLAN_LEN, tx + MACS_LEN, (*nx) - MACS_LEN);
+  *nx += 4;
+  return buf;
+}
+
 int handle_packet(void) {
   int rc=-1;
-  ssize_t nr,nt;
+  ssize_t nr,nt,nx;
+  char *tx = cfg.pkt;
 
   struct sockaddr_ll addr_r, addr_x;
   socklen_t addrlen = sizeof(addr_r);
@@ -205,9 +228,7 @@ int handle_packet(void) {
     goto done;
   }
 
-  if (cfg.verbose) {
-    fprintf(stderr,"received %lu bytes of message data\n", (long)nr);
-  }
+  if (cfg.verbose) fprintf(stderr,"received %lu byte packet\n", (long)nr);
 
   /* per packet(7) only these five fields should be set on outgoing addr_x */
   memset(&addr_x, 0, sizeof(addr_x));
@@ -218,7 +239,14 @@ int handle_packet(void) {
   addr_x.sll_ifindex = cfg.odev_ifindex;
   addr_x.sll_protocol = addr_r.sll_protocol;
 
-  nt = sendto(cfg.tx_fd, cfg.pkt, nr, 0, (struct sockaddr*)&addr_x, addrlen);
+  nx = nr;
+  if (cfg.vlan) tx = inject_vlan(tx,&nx);
+  if (tx == NULL) {
+    fprintf(stderr, "vlan tag injection failed\n");
+    goto done;
+  }
+
+  nt = sendto(cfg.tx_fd, tx, nx, 0, (struct sockaddr*)&addr_x, addrlen);
   if (nt != nr) {
     fprintf(stderr,"sendto: %s\n", (nt < 0) ? strerror(errno) : "partial");
     goto done;
@@ -235,12 +263,13 @@ int main(int argc, char *argv[]) {
   cfg.prog = argv[0];
   int n,opt;
 
-  while ( (opt=getopt(argc,argv,"vi:o:hP")) != -1) {
+  while ( (opt=getopt(argc,argv,"vi:o:hPV:")) != -1) {
     switch(opt) {
       case 'v': cfg.verbose++; break;
       case 'i': cfg.idev=strdup(optarg); break; 
       case 'o': cfg.odev=strdup(optarg); break; 
       case 'P': cfg.nopromisc=1; break; 
+      case 'V': cfg.vlan=atoi(optarg); break; 
       case 'h': default: usage(); break;
     }
   }
