@@ -21,7 +21,12 @@ int main(int argc, char *argv[]) {
 
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path)-1);
+  if (*socket_path == '\0') {
+    *addr.sun_path = '\0';
+    strncpy(addr.sun_path+1, socket_path+1, sizeof(addr.sun_path)-2);
+  } else {
+    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path)-1);
+  }
 
   if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
     perror("connect error");
