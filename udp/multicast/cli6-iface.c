@@ -33,7 +33,7 @@ int main(int argc, char *argv[]) {
   if (argc > 1) iface = argv[1];
 
   /**********************************************************
-   * create an IPv4/UDP socket, not yet bound to any address
+   * create an IPv6/UDP socket, not yet bound to any address
    *********************************************************/
   int fd = socket(AF_INET6, SOCK_DGRAM, 0);
   if (fd == -1) {
