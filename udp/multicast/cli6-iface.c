@@ -10,6 +10,9 @@
 #include <net/if.h>
 #include <sys/ioctl.h>
 
+/*
+ *  see ipv6(7) manual page for excellent overview
+ */
 
 /* Send multicast _on a specific network interface_.
    This overrides the kernel's default choice.
@@ -39,6 +42,20 @@ int main(int argc, char *argv[]) {
   }
 
   /**********************************************************
+   * ask the kernel to use a specific interface for multicast
+   *********************************************************/
+  int l = strlen(iface);
+  if (l+1 >IFNAMSIZ) {printf("interface too long\n"); exit(-1);}
+
+  struct ifreq ifr;
+  memcpy(ifr.ifr_name, iface, l+1);
+  if (ioctl(fd, SIOCGIFINDEX, &ifr)) {printf("ioctl: %s\n", strerror(errno)); exit(-1);} 
+  if (setsockopt(fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &ifr.ifr_ifindex, sizeof(ifr.ifr_ifindex))) {
+    fprintf(stderr, "setsockopt: %s\n", strerror(errno));
+    exit(-1);
+  }
+
+  /**********************************************************
    * internet socket address structure, for the remote side
    *********************************************************/
   struct sockaddr_in6 sin6;
@@ -49,39 +66,6 @@ int main(int argc, char *argv[]) {
   }
   sin6.sin6_family = AF_INET6;
   sin6.sin6_port = htons(port);
-
-  /* look for an IPv6 address on the given interface. ask
-   * the kernel to send multicast on this fd from it. */
-  struct in6_addr src6;
-  struct ifaddrs *ifaddr, *ifa;
-  if (getifaddrs(&ifaddr) == -1) {
-    fprintf(stderr,"getifaddrs: %s\n", strerror(errno));
-    exit(-1);
-  }
-  for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-    if (strcmp(ifa->ifa_name, iface)) continue;
-    if (ifa->ifa_addr == NULL) continue;
-    if ((ifa->ifa_flags & IFF_MULTICAST) == 0) continue;
-    if (ifa->ifa_addr->sa_family != AF_INET6) continue;
-    struct sockaddr_in6 *a6 = (struct sockaddr_in6*)ifa->ifa_addr;
-    src6 = a6->sin6_addr; /* struct copy */
-    break;
-  }
-  if (ifa == NULL) {
-    fprintf(stderr,"no multicast AF_INET6 interface %s\n", iface);
-    exit(-1);
-  }
-  freeifaddrs(ifaddr);
-
-  /* for human benefit - show the IPv6 address we wound up finding */
-  char p6[INET6_ADDRSTRLEN];
-  inet_ntop(AF_INET6, &src6, p6, sizeof(p6));
-  printf("requesting multicast origination from %s on %s\n", p6, iface);
-
-  if (setsockopt(fd, IPPROTO_IPV6, IP_MULTICAST_IF, &src6, sizeof(src6))) {
-    fprintf(stderr, "setsockopt: %s\n", strerror(errno));
-    exit(-1);
-  }
 
   /**********************************************************
    * don't use connect() for IPv6 multicast, use sendto
