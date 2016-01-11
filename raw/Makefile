@@ -1,11 +1,8 @@
-PROGS=compile_filter decode_tcp_headers hardcoded_filter iface_stats \
-      pkt_lengths pkt_lengths_file signal_driven_capture multi_mode \
-      pkt_bloom
+PROGS=rx rx-dump rx-fan rx-ring1 rx-ring2 rx-ring3 rx-tx
 OBJS=$(patsubst %,%.o,$(PROGS))
 all: $(OBJS) $(PROGS) 
 
-#CFLAGS=-g -Wall
-LDFLAGS=-lpcap
+CFLAGS=-g -Wall
 
 # static pattern rule: multiple targets 
 
