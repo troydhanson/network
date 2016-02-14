@@ -1,4 +1,4 @@
-PROGS=rx rx-dump rx-fan rx-ring1 rx-ring2 rx-ring3 rx-tx
+PROGS=rx rx-dump rx-fan rx-ring1 rx-ring2 rx-ring3 rx-tx tx
 OBJS=$(patsubst %,%.o,$(PROGS))
 all: $(OBJS) $(PROGS) 
 

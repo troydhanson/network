@@ -8,14 +8,15 @@ They can also capture packets.
 * rx-ring1 - `PACKET_RX_RING`-based capture, uses API version `TPACKET_V1`
 * rx-ring2 - `PACKET_RX_RING`-based capture, uses API version `TPACKET_V2`
 * rx-ring3 - `PACKET_RX_RING`-based capture, uses API version `TPACKET_V3` 
-* rx-tx    - recvfrom/sendto frame repeater
+* rx-tx    -  recvfrom/sendto frame repeater
+* tx    -     replay packets from pcap
 
 `PACKET_RX_RING` notes
 
 The difference between `TPACKET_V1` and `TPACKET_V2` is minimal. There was
 a change to the `tpacket_hdr` structure to use explicit sized types.  Also
 the timestamps changed to have nanosecond resoltuion. In `TPACKET_V3` more 
-significant changes was made. The ring slots became variable-width so short
+significant changes were made. The ring slots became variable-width so short
 packets take less space. Polling became block-level instead of packet-level. 
 
 As a matter of personal taste Ring1/2 seem more elegant and they "just work". 
