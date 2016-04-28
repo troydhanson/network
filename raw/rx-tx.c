@@ -73,6 +73,7 @@ int setup_rx(void) {
 
   /* any link layer protocol packets (linux/if_ether.h) */
   int protocol = htons(ETH_P_ALL);
+  //int protocol = htons(ETH_P_8021Q); /* FIXME */
 
   /* create the packet socket */
   cfg.rx_fd = socket(AF_PACKET, SOCK_RAW, protocol);
@@ -96,6 +97,7 @@ int setup_rx(void) {
   sl.sll_family = AF_PACKET;
   sl.sll_protocol = protocol;
   sl.sll_ifindex = ifr.ifr_ifindex;
+  //sl.sll_hatype = PACKET_HOST; /* FIXME want 8021q */
   ec = bind(cfg.rx_fd, (struct sockaddr*)&sl, sizeof(sl));
   if (ec < 0) {
     fprintf(stderr,"socket: %s\n", strerror(errno));
@@ -124,10 +126,18 @@ int setup_rx(void) {
   return rc;
 }
 
+/*
+ socket(PF_PACKET, SOCK_RAW, 768)        = 3
+ ioctl(3, SIOCGIFINDEX, {ifr_name="tee", ifr_index=7}) = 0
+ bind(3, {sa_family=AF_PACKET, proto=0x03, if7, pkttype=PACKET_HOST, addr(0)={4, }, 20) = 0
+ getsockopt(3, SOL_SOCKET, SO_ERROR, [0], [4]) = 0
+ ioctl(3, SIOCGIFHWADDR, {ifr_name="tee", ifr_hwaddr=00:0a:cd:2b:0f:b6}) = 0
+ setsockopt(3, SOL_SOCKET, SO_BROADCAST, [1], 4) = 0
+*/
+
 int setup_tx(void) {
   int rc=-1, ec;
 
-  /* any link layer protocol packets (linux/if_ether.h) */
   int protocol = htons(ETH_P_ALL);
 
   /* create the packet socket */
@@ -146,6 +156,27 @@ int setup_tx(void) {
     goto done;
   }
   cfg.odev_ifindex = ifr.ifr_ifindex;
+
+  /* bind interface. doing this to imitate tcpreplay */
+  struct sockaddr_ll sl;
+  memset(&sl, 0, sizeof(sl));
+  sl.sll_family = AF_PACKET;
+  sl.sll_protocol = protocol;
+  sl.sll_hatype = PACKET_HOST; /* using PACKET_HOST like tcpreplay; packet(7) says not needed */
+  sl.sll_ifindex = cfg.odev_ifindex;
+  ec = bind(cfg.tx_fd, (struct sockaddr*)&sl, sizeof(sl));
+  if (ec < 0) {
+    fprintf(stderr,"socket: %s\n", strerror(errno));
+    goto done;
+  }
+
+  /* setsockopt SO_BROADCAST like tcpreplay. is this really necessary? */
+  int one = 1;
+  ec = setsockopt(cfg.tx_fd, SOL_SOCKET, SO_BROADCAST, &one, sizeof(one));
+  if (ec < 0) {
+    fprintf(stderr,"setsockopt SO_BROADCAST: %s\n", strerror(errno));
+    goto done;
+  }
 
   rc = 0;
 
@@ -222,7 +253,7 @@ int handle_packet(void) {
   ssize_t nr,nt,nx;
   char *tx = cfg.pkt;
 
-  struct sockaddr_ll addr_r, addr_x;
+  struct sockaddr_ll addr_r;
   socklen_t addrlen = sizeof(addr_r);
 
   nr = recvfrom(cfg.rx_fd, cfg.pkt, sizeof(cfg.pkt), 0, 
@@ -233,15 +264,6 @@ int handle_packet(void) {
   }
 
   if (cfg.verbose) fprintf(stderr,"received %lu byte packet\n", (long)nr);
-
-  /* per packet(7) only these five fields should be set on outgoing addr_x */
-  memset(&addr_x, 0, sizeof(addr_x));
-  addr_x.sll_family = AF_PACKET;
-  memcpy(addr_x.sll_addr, cfg.pkt, 6); /* copy dst mac from packet */
-  assert(addr_r.sll_halen == 6);
-  addr_x.sll_halen = addr_r.sll_halen;
-  addr_x.sll_ifindex = cfg.odev_ifindex;
-  addr_x.sll_protocol = addr_r.sll_protocol;
 
   /* inject 802.1q tag if requested */
   nx = nr;
@@ -257,7 +279,7 @@ int handle_packet(void) {
   /* trim N bytes from frame end if requested. */
   if (cfg.tail && (nx > cfg.tail)) nx -= cfg.tail;
 
-  nt = sendto(cfg.tx_fd, tx, nx, 0, (struct sockaddr*)&addr_x, addrlen);
+  nt = sendto(cfg.tx_fd, tx, nx, 0, NULL, 0);
   if (nt != nx) {
     fprintf(stderr,"sendto: %s\n", (nt < 0) ? strerror(errno) : "partial");
     goto done;
