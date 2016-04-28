@@ -120,6 +120,15 @@ int setup_rx(void) {
     goto done;
   }
 
+  
+  /* enable ancillary data, providing packet length and snaplen, 802.1Q, etc */
+  int on = 1;
+  ec = setsockopt(cfg.rx_fd, SOL_PACKET, PACKET_AUXDATA, &on, sizeof(on));
+  if (ec < 0) {
+    fprintf(stderr,"setsockopt PACKET_AUXDATA: %s\n", strerror(errno));
+    goto done;
+  }
+
   rc = 0;
 
  done:
@@ -251,8 +260,23 @@ char *inject_vlan(char *tx, ssize_t *nx) {
 int handle_packet(void) {
   int rc=-1;
   ssize_t nr,nt,nx;
-  char *tx = cfg.pkt;
 
+  struct tpacket_auxdata *pa; /* for PACKET_AUXDATA; see packet(7) */
+  struct cmsghdr *cmsg;
+  struct {
+    struct cmsghdr h;
+    struct tpacket_auxdata a;
+  } u;
+
+  /* we get the packet and metadata via recvmsg */
+  struct msghdr msgh;
+  memset(&msgh, 0, sizeof(msgh));
+
+  /* ancillary data; we requested packet metadata (PACKET_AUXDATA) */
+  msgh.msg_control = &u;
+  msgh.msg_controllen = sizeof(u);
+
+#if 0
   struct sockaddr_ll addr_r;
   socklen_t addrlen = sizeof(addr_r);
 
@@ -262,10 +286,45 @@ int handle_packet(void) {
     fprintf(stderr,"recvfrom: %s\n", nr ? strerror(errno) : "eof");
     goto done;
   }
+#endif
 
-  if (cfg.verbose) fprintf(stderr,"received %lu byte packet\n", (long)nr);
+  struct iovec iov;
+  iov.iov_base = cfg.pkt;
+  iov.iov_len = MAX_PKT;
+  msgh.msg_iov = &iov;
+  msgh.msg_iovlen = 1;
+
+  nr = recvmsg(cfg.rx_fd, &msgh, 0);
+  if (nr <= 0) {
+    fprintf(stderr,"recvmsg: %s\n", nr ? strerror(errno) : "eof");
+    goto done;
+  }
+
+  if (cfg.verbose) fprintf(stderr,"received %lu bytes of message data\n", (long)nr);
+  if (cfg.verbose) fprintf(stderr,"received %lu bytes of control data\n", (long)msgh.msg_controllen);
+  cmsg = CMSG_FIRSTHDR(&msgh);
+  if (cmsg == NULL) {
+    fprintf(stderr,"ancillary data missing from packet\n");
+    goto done;
+  }
+  pa = (struct tpacket_auxdata*)CMSG_DATA(cmsg);
+  if (cfg.verbose) fprintf(stderr, " packet length  %u\n", pa->tp_len);
+  if (cfg.verbose) fprintf(stderr, " packet snaplen %u\n", pa->tp_snaplen);
+  int losing = (pa->tp_status & TP_STATUS_LOSING) ? 1 : 0; 
+  if (losing) fprintf(stderr, " warning; losing\n");
+  int has_vlan = (pa->tp_status & TP_STATUS_VLAN_VALID) ? 1 : 0; 
+  if (cfg.verbose) fprintf(stderr, " packet has vlan %c\n", has_vlan ? 'Y' : 'N');
+  if (has_vlan) {
+    uint16_t vlan_tci = pa->tp_vlan_tci;
+    //uint16_t tci = ntohs(vlan_tci);
+    uint16_t tci = vlan_tci;
+    uint16_t vid = tci & 0xfff; // vlan VID is in the low 12 bits of the TCI
+    if (cfg.verbose) fprintf(stderr, " packet vlan %d\n", vid);
+    cfg.vlan = vid;
+  }
 
   /* inject 802.1q tag if requested */
+  char *tx = cfg.pkt;
   nx = nr;
   if (cfg.vlan) tx = inject_vlan(tx,&nx);
   if (tx == NULL) {
