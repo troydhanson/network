@@ -1,13 +1,13 @@
-OBJS=tcp-server epoll-server
+OBJS=sigio-server epoll-server
 ALL: $(OBJS)
 
 CFLAGS=-Wall
 CFLAGS+=-g
 
-tcp-server: tcp-server.o
+sigio-server: sigio-server.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-tcp-server.o: tcp-server.c
+sigio-server.o: sigio-server.c
 	$(CC) -c $(CFLAGS) $<
 
 epoll-server: epoll-server.o
