@@ -30,3 +30,4 @@
 
 # etc
 *.pcap
+.gdb_history

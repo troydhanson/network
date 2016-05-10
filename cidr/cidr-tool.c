@@ -1,0 +1,187 @@
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <errno.h>
+#include <assert.h>
+#include <fcntl.h>
+#include <inttypes.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+/* 
+ *  cidr-util 
+ *  a CIDR calculator 
+ *  by Troy D. Hanson
+ */
+
+#define MODE_UNKNOWN        0
+#define MODE_MASK_TO_N      1
+#define MODE_N_TO_MASK      2
+#define MODE_IN_SAME_NET    3
+#define MODE_CIDR_EXPAND    4
+#define MODE_RANGE_TO_CIDRS 5
+
+/* standard bit vector macros */
+#define BIT_TEST(c,i)  ((c[(i)/8] &   (1 << ((i) % 8))) ? 1 : 0)
+#define BIT_SET(c,i)    (c[(i)/8] |=  (1 << ((i) % 8)))
+#define BIT_CLEAR(c,i)  (c[(i)/8] &= ~(1 << ((i) % 8)))
+
+struct {
+  char *prog;
+  int mode;
+  int verbose;
+} CF;
+
+void usage() {
+  fprintf(stderr,"usage: %s [-v] <file>\n", CF.prog);
+  exit(-1);
+}
+
+/* netmask is an IP with contiguous set bits then contiguous clear bits */
+int is_netmask(char *w) {
+  unsigned a, b, c, d, j;
+  int rc = -1, sc;
+  union {
+    uint32_t i;
+    uint8_t c[4];
+  } addr;
+
+  sc = sscanf(w, "%u.%u.%u.%u", &a, &b, &c, &d);
+  if (sc != 4) goto done;
+ 
+  struct in_addr ia;
+  if (inet_aton(w, &ia) == 0) goto done;
+
+  addr.i = ia.s_addr; 
+  addr.i = ntohl(addr.i);
+
+  /* addr.i is in host byte order, meaning that c[0] 
+   * is the least significant octet. we verify that the
+   * address consists of a run of clear bits then a 
+   * run of set bits. Either run can have zero length.
+    */
+
+  int in_clear=1;
+
+  for(j=0; j < 32; j++) {
+    if (BIT_TEST(addr.c, j)) {
+      in_clear = 0;
+    } else {
+      if (in_clear) continue;
+      goto done;  /* invalid; a clear bit in set region */
+    }
+  }
+
+  rc = 0;
+
+ done:
+  return !rc;
+}
+
+/* slash followed by one or two digits <= 32 */
+int is_slash_n(char *w) {
+  unsigned n;
+  int rc = -1, sc;
+
+  sc = sscanf(w, "/%u", &n);
+  if (sc < 1) goto done;
+  if (n > 32) goto done;
+
+  rc = 0;
+
+ done:
+  return !rc;
+}
+
+/* IP followed by a /N */
+int is_cidr(char *w) {
+  unsigned a, b, c, d, n;
+  int rc = -1, sc;
+
+  sc = sscanf(w, "%u.%u.%u.%u/%u", &a, &b, &c, &d, &n);
+  if (sc != 5) goto done;
+
+  if ((a > 255) || (b > 255) || (c > 255) || (d > 255)) goto done;
+  if (n > 32) goto done;
+
+  rc = 0;
+
+ done:
+  return !rc;
+}
+
+/* four octets as dotted quad */
+int is_ip(char *w) {
+  unsigned a, b, c, d;
+  int rc = -1, sc;
+
+  sc = sscanf(w, "%u.%u.%u.%u", &a, &b, &c, &d);
+  if (sc != 4) goto done;
+
+  if ((a > 255) || (b > 255) || (c > 255) || (d > 255)) goto done;
+
+  rc = 0;
+
+ done:
+  return !rc;
+}
+
+int infer_mode(int argc, char **argv) {
+  int rc = -1;
+
+  assert(argc >= optind);
+  argv += optind;
+  argc -= optind;
+
+  /* one argument? should be netmask or /N or cidr */
+  if (argc == 1) {
+    if      (is_netmask(*argv)) CF.mode = MODE_MASK_TO_N;
+    else if (is_slash_n(*argv)) CF.mode = MODE_N_TO_MASK;
+    else if (is_cidr(*argv))    CF.mode = MODE_CIDR_EXPAND;
+    else goto done;
+  }
+
+  /* two arguments? should be start-ip end-ip */
+  if (argc == 2) {
+    if (is_ip(argv[0]) && is_ip(argv[1])) CF.mode = MODE_RANGE_TO_CIDRS;
+    else goto done;
+  }
+
+  /* three+ arguments? should be netmask|/N ip1 ... */
+  if (argc >= 3) {
+    if      (is_netmask(*argv)) CF.mode = MODE_IN_SAME_NET;
+    else if (is_slash_n(*argv)) CF.mode = MODE_IN_SAME_NET;
+    else goto done;
+  }
+  
+  rc = 0;
+ 
+ done:
+  return rc;
+}
+
+int main(int argc, char *argv[]) {
+  int opt, rc=-1;
+
+  CF.prog = argv[0];
+
+  while ( (opt = getopt(argc,argv,"vh")) > 0) {
+    switch(opt) {
+      case 'v': CF.verbose++; break;
+      case 'h': default: usage(argv[0]); break;
+    }
+  }
+
+  if (CF.mode == MODE_UNKNOWN) {
+    if (infer_mode(argc, argv) < 0) goto done;
+  }
+
+  rc = 0;
+ 
+ done:
+  if (rc < 0) usage();
+  return rc;
+}
+
