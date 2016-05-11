@@ -35,6 +35,7 @@ struct {
 
   /* mode specific */
   int slash_n;
+  uint32_t cidr;
 } CF;
 
 void usage() {
@@ -119,6 +120,9 @@ int is_cidr(char *w) {
   if ((a > 255) || (b > 255) || (c > 255) || (d > 255)) goto done;
   if (n > 32) goto done;
 
+  CF.cidr = (a << 24) | (b << 16) | (c << 8) | d;
+  CF.slash_n = n;
+
   rc = 0;
 
  done:
@@ -201,6 +205,17 @@ int generate_result(int argc, char *argv[]) {
         }
       }
       printf("Addresses in same network\n");
+      break;
+    case MODE_CIDR_EXPAND:
+      while(n++ < CF.slash_n) i = (i >> 1U) | 0x80000000;
+      uint32_t num_host_bits = 32 - CF.slash_n;
+      uint64_t num_permutations = 1U << num_host_bits;
+      uint64_t h = 0;
+      while(h < num_permutations) {
+        uint32_t ip = (CF.cidr & i) | h++;
+        struct in_addr ia = {.s_addr = htonl(ip)};
+        printf("%s\n", inet_ntoa(ia));
+      }
       break;
     default:
       goto done;
