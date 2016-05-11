@@ -10,8 +10,11 @@ $(OBJS): %.o: %.c
 $(PROGS): %: %.o
 	$(CC) -o $@ $(CFLAGS) $< $(LDFLAGS)
 
-.PHONY: clean
+.PHONY: clean tests
 
 clean:
 	rm -f *.o $(PROGS)
+	make -C tests $@
 
+tests:
+	make -C tests

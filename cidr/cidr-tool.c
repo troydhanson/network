@@ -32,6 +32,9 @@ struct {
   char *prog;
   int mode;
   int verbose;
+
+  /* mode specific */
+  int netmask_set_bits;
 } CF;
 
 void usage() {
@@ -46,7 +49,7 @@ int is_netmask(char *w) {
   union {
     uint32_t i;
     uint8_t c[4];
-  } addr;
+  } addr, tmp;
 
   sc = sscanf(w, "%u.%u.%u.%u", &a, &b, &c, &d);
   if (sc != 4) goto done;
@@ -54,12 +57,20 @@ int is_netmask(char *w) {
   struct in_addr ia;
   if (inet_aton(w, &ia) == 0) goto done;
 
+  /* addr.i in network order. we want to convert it to little endian (which may
+   * or may not be the same as host byte order, so we explicitly reverse it
+   * instead of ntohl). we want it in little endian because our bit tests below
+   * treat the MSB of the first byte as preceding the LSB of the second byte.
+   */
   addr.i = ia.s_addr; 
-  addr.i = ntohl(addr.i);
+  tmp.i = addr.i;
+  addr.c[0] = tmp.c[3];
+  addr.c[1] = tmp.c[2];
+  addr.c[2] = tmp.c[1];
+  addr.c[3] = tmp.c[0];
 
-  /* addr.i is in host byte order, meaning that c[0] 
-   * is the least significant octet. we verify that the
-   * address consists of a run of clear bits then a 
+  /* addr.i is now little endian, meaning that c[0] is the least significant
+   * octet. we verify that the address consists of a run of clear bits then a
    * run of set bits. Either run can have zero length.
     */
 
@@ -67,6 +78,7 @@ int is_netmask(char *w) {
 
   for(j=0; j < 32; j++) {
     if (BIT_TEST(addr.c, j)) {
+      CF.netmask_set_bits++;
       in_clear = 0;
     } else {
       if (in_clear) continue;
@@ -162,6 +174,24 @@ int infer_mode(int argc, char **argv) {
   return rc;
 }
 
+int generate_result(void) {
+  int rc = -1;
+
+  switch (CF.mode) {
+    case MODE_MASK_TO_N:
+      printf("/%u\n", CF.netmask_set_bits);
+      break;
+    default:
+      goto done;
+      break;
+  }
+
+  rc = 0;
+
+ done:
+  return rc;
+}
+
 int main(int argc, char *argv[]) {
   int opt, rc=-1;
 
@@ -177,6 +207,8 @@ int main(int argc, char *argv[]) {
   if (CF.mode == MODE_UNKNOWN) {
     if (infer_mode(argc, argv) < 0) goto done;
   }
+
+  if (generate_result() < 0) goto done;
 
   rc = 0;
  
