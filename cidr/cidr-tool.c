@@ -35,6 +35,7 @@ struct {
 
   /* mode specific */
   int netmask_set_bits;
+  int slash_n;
 } CF;
 
 void usage() {
@@ -100,6 +101,7 @@ int is_slash_n(char *w) {
   sc = sscanf(w, "/%u", &n);
   if (sc < 1) goto done;
   if (n > 32) goto done;
+  CF.slash_n = n;
 
   rc = 0;
 
@@ -176,10 +178,16 @@ int infer_mode(int argc, char **argv) {
 
 int generate_result(void) {
   int rc = -1;
+  uint32_t i=0,n=0;
 
   switch (CF.mode) {
     case MODE_MASK_TO_N:
       printf("/%u\n", CF.netmask_set_bits);
+      break;
+    case MODE_N_TO_MASK:
+      while(n++ < CF.slash_n) i = (i >> 1U) | 0x80000000;
+      struct in_addr ia = {.s_addr = htonl(i)};
+      printf("%s\n", inet_ntoa(ia));
       break;
     default:
       goto done;
