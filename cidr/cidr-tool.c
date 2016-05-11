@@ -34,7 +34,6 @@ struct {
   int verbose;
 
   /* mode specific */
-  int netmask_set_bits;
   int slash_n;
 } CF;
 
@@ -79,7 +78,7 @@ int is_netmask(char *w) {
 
   for(j=0; j < 32; j++) {
     if (BIT_TEST(addr.c, j)) {
-      CF.netmask_set_bits++;
+      CF.slash_n++;
       in_clear = 0;
     } else {
       if (in_clear) continue;
@@ -145,10 +144,6 @@ int is_ip(char *w) {
 int infer_mode(int argc, char **argv) {
   int rc = -1;
 
-  assert(argc >= optind);
-  argv += optind;
-  argc -= optind;
-
   /* one argument? should be netmask or /N or cidr */
   if (argc == 1) {
     if      (is_netmask(*argv)) CF.mode = MODE_MASK_TO_N;
@@ -176,18 +171,36 @@ int infer_mode(int argc, char **argv) {
   return rc;
 }
 
-int generate_result(void) {
+int generate_result(int argc, char *argv[]) {
   int rc = -1;
-  uint32_t i=0,n=0;
+  uint32_t i=0,n=0,c=0,network=0;
 
   switch (CF.mode) {
     case MODE_MASK_TO_N:
-      printf("/%u\n", CF.netmask_set_bits);
+      printf("/%u\n", CF.slash_n);
       break;
     case MODE_N_TO_MASK:
       while(n++ < CF.slash_n) i = (i >> 1U) | 0x80000000;
       struct in_addr ia = {.s_addr = htonl(i)};
       printf("%s\n", inet_ntoa(ia));
+      break;
+    case MODE_IN_SAME_NET:
+      while(n++ < CF.slash_n) i = (i >> 1U) | 0x80000000;
+      /* elide consumed argv/argc from slash_n */
+      assert(argc);
+      argc--;
+      argv++;
+      while(c < argc) {
+        struct in_addr ia;
+        if (inet_aton( argv[c], &ia) == 0) goto done;
+        if (c++ == 0) network = i & ntohl(ia.s_addr);
+        if ((i & ntohl(ia.s_addr)) != network) {
+          printf("Addresses in different networks\n");
+          rc = 0;
+          goto done;
+        }
+      }
+      printf("Addresses in same network\n");
       break;
     default:
       goto done;
@@ -201,7 +214,7 @@ int generate_result(void) {
 }
 
 int main(int argc, char *argv[]) {
-  int opt, rc=-1;
+  int opt, rc=-1, sc;
 
   CF.prog = argv[0];
 
@@ -212,11 +225,17 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  assert(argc >= optind);
+  argv += optind;
+  argc -= optind;
+
   if (CF.mode == MODE_UNKNOWN) {
-    if (infer_mode(argc, argv) < 0) goto done;
+    sc = infer_mode(argc, argv);
+    if (sc < 0) goto done;
   }
 
-  if (generate_result() < 0) goto done;
+  sc = generate_result(argc,argv);
+  if (sc < 0) goto done;
 
   rc = 0;
  
