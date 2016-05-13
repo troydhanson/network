@@ -5,7 +5,7 @@ An IPv4 CIDR expression is shorthand for a range of IP space. E.g.,
     192.168.128.0/20
 
 can be understood as two parts in binary terms: a fixed prefix that extends for
-20 bits, and the variable part consisting of the remaining bits.
+20 bits, and the host part consisting of the remaining variable bits.
 
     ------- fixed --------/---variable--
     11000000 10101000 1000/0000 00000000
@@ -51,9 +51,9 @@ the IP is inside the CIDR.
 
 IPv4 routing requires that a host and its gateway are in the same subnet.
 
-GATEWAY=10.20.30.1
-ADDRESS=10.20.30.27
-NETMASK=255.255.255.224
+    GATEWAY=10.20.30.1
+    ADDRESS=10.20.30.27
+    NETMASK=255.255.255.224
 
     ./cidr-tool $NETMASK $ADDRESS $GATEWAY
     Addresses in same network
@@ -80,5 +80,7 @@ case, start a new CIDR range instead.
 
     ./cidr-tool 0.0.0.0 130.255.255.255
     0.0.0.0/1
-    128.0.0.0/1
+    128.0.0.0/7
+    130.0.0.0/8
+
 
