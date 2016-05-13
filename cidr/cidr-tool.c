@@ -175,9 +175,58 @@ int infer_mode(int argc, char **argv) {
   return rc;
 }
 
+void print_cidr(uint32_t cidr, uint32_t n) {
+  uint32_t mask=0, i=n;
+  while(i--) mask = (mask >> 1U) | 0x80000000;
+  struct in_addr ia = {.s_addr = htonl(cidr & mask)};
+  printf("%s/%u\n", inet_ntoa(ia), n);
+}
+
+uint32_t min_cidr(uint32_t cidr, uint32_t n) {
+  uint32_t mask=0;
+  while(n--) mask = (mask >> 1U) | 0x80000000;
+  return cidr & mask;
+}
+
+uint32_t max_cidr(uint32_t cidr, uint32_t n) {
+  uint32_t mask=0;
+  while(n--) mask = (mask >> 1U) | 0x80000000;
+  return (cidr & mask) | ~mask;
+}
+
+int in_cidr(uint32_t ip, uint32_t cidr, uint32_t n) {
+  uint32_t mask=0;
+  while(n--) mask = (mask >> 1U) | 0x80000000;
+  return ((cidr & mask) == (ip & mask)) ? 1 : 0;
+}
+
+/* attempt to widen CIDR/n by one or more bits (shrinking /N)
+ * until it encompasses ip; succeed only if the new CIDR range
+ * is inside of bounds ip_A (min) and ip_B (max) inclusive. 
+ *
+ * returns 0 on failure, or the new /N on success 
+ *
+ */
+uint32_t widen_cidr(uint32_t cidr, uint32_t n, uint32_t ip,
+                    uint32_t ip_A, uint32_t ip_B) {
+  int rc = -1;
+
+  while(n > 1) {
+    n--;
+    if (!in_cidr(ip, cidr, n)) continue;
+    if (min_cidr(cidr, n) < ip_A) goto done;
+    if (max_cidr(cidr, n) > ip_B) goto done;
+    rc = 0;
+    break;
+  }
+
+ done:
+  return (rc < 0) ? 0 : n;
+}
+
 int generate_result(int argc, char *argv[]) {
   int rc = -1;
-  uint32_t i=0,n=0,c=0,network=0;
+  uint32_t i=0,n=0,c=0,network=0,m;
 
   switch (CF.mode) {
     case MODE_MASK_TO_N:
@@ -216,6 +265,28 @@ int generate_result(int argc, char *argv[]) {
         struct in_addr ia = {.s_addr = htonl(ip)};
         printf("%s\n", inet_ntoa(ia));
       }
+      break;
+    case MODE_RANGE_TO_CIDRS:
+      if (argc != 2) goto done;
+      struct in_addr a, b;
+      uint32_t ip_A, ip_B, ip, cidr;
+      if (inet_aton(argv[0], &a) == 0) goto done;
+      if (inet_aton(argv[1], &b) == 0) goto done;
+      ip_A = ntohl(a.s_addr);
+      ip_B = ntohl(b.s_addr);
+      if (ip_A > ip_B) goto done;
+      cidr = ip_A;
+      n = 32;
+      for(ip = ip_A; ip <= ip_B; ip++) {
+        if (in_cidr(ip, cidr, n)) continue;
+        m = widen_cidr(cidr, n, ip, ip_A, ip_B);
+        if (m == 0) {
+          print_cidr(cidr, n); /* close prior range */
+          cidr = ip;           /* start a new range */
+          n = 32;
+        } else n = m;
+      }
+      print_cidr(cidr, n);
       break;
     default:
       goto done;
