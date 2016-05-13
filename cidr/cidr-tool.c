@@ -269,7 +269,8 @@ int generate_result(int argc, char *argv[]) {
     case MODE_RANGE_TO_CIDRS:
       if (argc != 2) goto done;
       struct in_addr a, b;
-      uint32_t ip_A, ip_B, ip, cidr;
+      uint64_t ip_A, ip_B, ip; /* prevents rollover */
+      uint32_t cidr;
       if (inet_aton(argv[0], &a) == 0) goto done;
       if (inet_aton(argv[1], &b) == 0) goto done;
       ip_A = ntohl(a.s_addr);

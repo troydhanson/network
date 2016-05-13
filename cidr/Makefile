@@ -2,7 +2,8 @@ PROGS = $(patsubst %.c,%,$(wildcard *.c))
 all: $(PROGS)
 
 CFLAGS += -g
-CFLAGS += -Wall 
+CFLAGS += -Wall
+CFLAGS += -O2
 
 $(OBJS): %.o: %.c
 	$(CC) -c $(CFLAGS) $< 
