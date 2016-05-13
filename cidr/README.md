@@ -19,6 +19,11 @@ Typically CIDR describes a part of a network such as a subnet. The syntax can
 also be used with a full 32-bit IP address e.g. 192.168.144.19/20 to indicate
 the netmask that goes with a particular host on a particular subnet.
 
+## cidr-tool
+
+This directory contains the source code for a CIDR calculator called cidr-tool.
+To build it, run 'make' in this directory. Run `cidr-tool -h` to see its options.
+
 ## Operations
 
 ### Netmask to /N
