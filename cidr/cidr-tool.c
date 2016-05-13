@@ -29,7 +29,6 @@
 #define BIT_CLEAR(c,i)  (c[(i)/8] &= ~(1 << ((i) % 8)))
 
 struct {
-  char *prog;
   int mode;
   int verbose;
 
@@ -39,7 +38,14 @@ struct {
 } CF;
 
 void usage() {
-  fprintf(stderr,"usage: %s [-v] <file>\n", CF.prog);
+  fprintf(stderr,"usage: cidr-tool <operation>\n\n");
+  fprintf(stderr," operations:\n\n");
+  fprintf(stderr,"  <netmask>                  (netmask to /N)\n");
+  fprintf(stderr,"  /N                         (/N to netmask)\n");
+  fprintf(stderr,"  <netmask>|/N <IP> <IP> ... (test if IPs in same network)\n");
+  fprintf(stderr,"  <CIDR/N>                   (print IP's in CIDR)\n");
+  fprintf(stderr,"  <start-IP> <end-IP>        (make CIDR ranges from IP range)\n");
+  fprintf(stderr,"\n");
   exit(-1);
 }
 
@@ -302,8 +308,6 @@ int generate_result(int argc, char *argv[]) {
 
 int main(int argc, char *argv[]) {
   int opt, rc=-1, sc;
-
-  CF.prog = argv[0];
 
   while ( (opt = getopt(argc,argv,"vh")) > 0) {
     switch(opt) {
