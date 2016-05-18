@@ -23,6 +23,7 @@ void usage() {
   fprintf(stderr,"usage: %s [-v] -f <bpf-filter>                \n"
                  "               -i <eth>        (read from interface)\n"
                  "               -B <cap-buf-sz> (capture buf size eg. 10m)\n"
+                 "               -t <seconds>    (display interval)\n"
                  "\n",
           cfg.prog);
   exit(-1);
@@ -148,12 +149,13 @@ int main(int argc, char *argv[]) {
   cfg.now = time(NULL);
   int n,opt;
 
-  while ( (opt=getopt(argc,argv,"vB:f:i:h")) != -1) {
+  while ( (opt=getopt(argc,argv,"vB:f:i:t:h")) != -1) {
     switch(opt) {
       case 'v': cfg.verbose++; break;
       case 'f': cfg.filter=strdup(optarg); break; 
       case 'i': cfg.dev=strdup(optarg); break; 
       case 'B': cfg.capbuf=parse_kmg(optarg); break; 
+      case 't': cfg.display_interval=atoi(optarg); break; 
       case 'h': default: usage(); break;
     }
   }
