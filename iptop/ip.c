@@ -15,13 +15,9 @@ extern struct iptop_conf cfg;
 /*******************************************************************************
  * ethernet frame: | 6 byte dst MAC | 6 byte src MAC | 2 byte type | data
  * IP datagram: | 1 byte v/len | 1 byte TOS | 2 byte len | 16 more bytes | data
- * TCP segment: | 2 byte src port | 2 byte dst port | 4 byte seq | 4 byte ack | 
- *                2 byte flags | 2 byte window | 2 byte sum | 2 byte urg | data
  ******************************************************************************/
 void cb(u_char *unused, const struct pcap_pkthdr *hdr, const u_char *pkt) {
   /* data link: ethernet frame */
-  enum {other,arp,rarp,ip,vlan,ipv6,e802} etype=other;
-  char *etypes[] = {"other","arp","rarp","ip","vlan","ipv6","802_2/3"};
   const uint8_t *dst_mac=pkt, *src_mac=pkt+6, *typep=pkt+12;
   const uint8_t *data = pkt+14, *tci_p;
   uint16_t type,tci,vid;
@@ -30,29 +26,12 @@ void cb(u_char *unused, const struct pcap_pkthdr *hdr, const u_char *pkt) {
   if (hdr->caplen < ((typep - pkt) + 2)) return;
   memcpy(&type, typep, sizeof(uint16_t)); 
   type = ntohs(type); 
-  switch(type) {
-    case 0x0800: etype = ip; break;
-    case 0x8100: etype = vlan; break;
-    case 0x0806: etype = arp; break;
-    case 0x8035: etype = rarp; break;
-    case 0x86dd: etype = ipv6; break;
-    default: 
-      if (type < 1500) etype = e802;  // 802.2/3 link encapsulation vs. EthernetII
-      else etype = other; 
-      break;
-  }
 
-  if (etype==802) {
-    // skip SNAP and LLC header
-    typep += 6;
-    goto again;
-  }
-
+  if (type == 0x8100) /* vlan */ {
   /* vlan tags are 'interjected' before the ethertype; they are known by their
    * own ethertype (0x8100) followed by a TCI, after which the real etherype 
    * (or another double VLAN tag) occurs. Each VLAN tag adds two bytes to the
    * frame size. The TCI (tag control identifier) contains the VLAN ID (vid).*/
-  if (etype==vlan) { 
     tci_p = typep + 2; 
     if (hdr->caplen < ((tci_p - pkt)+2)) return;
     memcpy(&tci, tci_p, sizeof(uint16_t));  
@@ -72,7 +51,7 @@ void cb(u_char *unused, const struct pcap_pkthdr *hdr, const u_char *pkt) {
   uint8_t ip_version, ip_hdr_len, *ap;
   uint16_t ip_lenh, ip_idh, ip_opts_len;
   uint32_t ip_srch, ip_dsth;
-  if (etype == ip) {
+  if (type == 0x0800) {
     ip_datagram = data;
     if (hdr->caplen < ((ip_datagram - pkt) + 20)) return;
     ip_hl = data;   
@@ -82,7 +61,7 @@ void cb(u_char *unused, const struct pcap_pkthdr *hdr, const u_char *pkt) {
     ip_tos = data + 1;
     ip_len = data + 2;
     ip_id =  data + 4;
-    ip_fo =  data + 6;  /* TODO if fragmented, TCP/UDP header not repeated */
+    ip_fo =  data + 6;
     ip_ttl = data + 8;
     ip_proto=data + 9;
     ip_sum = data + 10;
