@@ -9,6 +9,28 @@
  *
  */
 
+/*
+ * Use ethtool(8) to disable hardware defragmentation for best results.
+ *
+ * ethtool -K $IF tso off
+ * ethtool -K $IF ufo off
+ * ethtool -K $IF gso off
+ * ethtool -K $IF gro off
+ * ethtool -K $IF lro off
+ *
+ * The idea is to avoid generating new outgoing packets from reassembled
+ * incoming fragments.  In other words, if the NIC defrags two IP datagrams,
+ * and hands us one large, reassembled datagram, it may exceed MTU. That's
+ * fine unless we attempt to transmit it that way; with a raw socket that
+ * generates an error. (IP would fragment it for us, in comparison).
+ *
+ * TODO detect; query outbound MTU; warn if outbound packet exceeds it
+ * 
+ * Furthermore iptables can block any packet in/out on the rx and tx
+ * interfaces; this prevents the kernel from acting on them while still
+ * providing visibility of them to the raw socket.
+*/
+ 
 #include <errno.h>
 #include <sys/epoll.h>
 #include <sys/types.h>
