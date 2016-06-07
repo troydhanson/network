@@ -21,11 +21,20 @@ void cb(u_char *unused, const struct pcap_pkthdr *hdr, const u_char *pkt) {
   const uint8_t *dst_mac=pkt, *src_mac=pkt+6, *typep=pkt+12;
   const uint8_t *data = pkt+14, *tci_p;
   uint16_t type,tci,vid;
-  if (hdr->caplen < 12) return;
+
+  // need at least a MAC pair, ethertype and IP header
+  if (hdr->caplen < 12+2+20) return;
+
  again:
   if (hdr->caplen < ((typep - pkt) + 2)) return;
   memcpy(&type, typep, sizeof(uint16_t)); 
   type = ntohs(type); 
+
+  /* 802.2/802.3 encapsulation (RFC 1042). Skip LLC/SNAP to reach ethertype. */
+  if (type <= 1500) {
+    typep += 6;
+    goto again;
+  }
 
   if (type == 0x8100) /* vlan */ {
   /* vlan tags are 'interjected' before the ethertype; they are known by their
@@ -46,7 +55,7 @@ void cb(u_char *unused, const struct pcap_pkthdr *hdr, const u_char *pkt) {
   * IP datagram 
    ****************************************************************************/
 
-  const uint8_t *ip_datagram, *ip_hl, *ip_tos, *ip_len, *ip_id, *ip_fo, *ip_ttl, 
+  const uint8_t *ip_datagram, *ip_hl, *ip_tos, *ip_len, *ip_id, *ip_fo, *ip_ttl,
           *ip_proto, *ip_sum, *ip_src, *ip_dst, *ip_opt, *ip_data;
   uint8_t ip_version, ip_hdr_len, *ap;
   uint16_t ip_lenh, ip_idh, ip_opts_len;
@@ -86,7 +95,7 @@ void cb(u_char *unused, const struct pcap_pkthdr *hdr, const u_char *pkt) {
                                 (ip_dsth & 0x000000ff) >>  0);
     data = ip_data;
     char *label = utstring_body(cfg.label);
-    tracker_hit(cfg.tracker, label, cfg.now, ip_lenh); /* excludes frame level */
+    tracker_hit(cfg.tracker, label, cfg.now, ip_lenh); /* len excludes frame */
   }
 }
 
