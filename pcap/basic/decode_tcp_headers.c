@@ -75,7 +75,7 @@ void cb(u_char *unused, const struct pcap_pkthdr *hdr, const u_char *pkt) {
   }
   printf("type: 0x%x (%s) ", (unsigned)type, etypes[etype]);
 
-  if (etype==802) {
+  if (etype==e802) {
     // skip SNAP and LLC header
     typep += 6;
     goto again;
