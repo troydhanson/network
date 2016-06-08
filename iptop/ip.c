@@ -95,7 +95,7 @@ void cb(u_char *unused, const struct pcap_pkthdr *hdr, const u_char *pkt) {
                                 (ip_dsth & 0x000000ff) >>  0);
     data = ip_data;
     char *label = utstring_body(cfg.label);
-    tracker_hit(cfg.tracker, label, cfg.now, ip_lenh); /* len excludes frame */
+    abtop_hit(cfg.abtop, label, cfg.now, ip_lenh, 0); /* len excludes frame */ // FIXME ab ba
   }
 }
 

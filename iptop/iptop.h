@@ -12,7 +12,7 @@
 #include <string.h>
 #include <pcap.h>
 #include <time.h>
-#include "tracker.h"
+#include "abtop.h"
 
 void cb(u_char *data, const struct pcap_pkthdr *hdr, const u_char *pkt);
 
@@ -33,7 +33,7 @@ struct iptop_conf {
   time_t now;
   int display_interval;
   UT_string *label;
-  tracker_t *tracker;
+  abtop_t *abtop;
 };
 
 #endif

@@ -34,7 +34,7 @@ int sigs[] = {SIGHUP,SIGTERM,SIGINT,SIGQUIT,SIGALRM};
 
 void periodic_work() {
   cfg.now = time(NULL);
-  if ((cfg.now % cfg.display_interval) == 0) show_tracker_top(cfg.tracker);
+  if ((cfg.now % cfg.display_interval) == 0) show_abtop_top(cfg.abtop);
 }
 
 int set_filter() {
@@ -145,7 +145,7 @@ int main(int argc, char *argv[]) {
   struct epoll_event ev;
   cfg.prog = argv[0];
   utstring_new(cfg.label);
-  cfg.tracker = tracker_new(1000,10);
+  cfg.abtop = abtop_new(1000,10);
   cfg.now = time(NULL);
   int n,opt;
 
@@ -215,6 +215,6 @@ done:
   if (cfg.pcap) pcap_close(cfg.pcap);
   if (cfg.pcap_fd > 0) close(cfg.pcap_fd);
   utstring_free(cfg.label);
-  tracker_free(cfg.tracker);
+  abtop_free(cfg.abtop);
   return 0;
 }
