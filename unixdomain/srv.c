@@ -25,10 +25,8 @@ int main(int argc, char *argv[]) {
     strncpy(addr.sun_path+1, socket_path+1, sizeof(addr.sun_path)-2);
   } else {
     strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path)-1);
+    unlink(socket_path);
   }
-
-
-  unlink(socket_path);
 
   if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
     perror("bind error");
