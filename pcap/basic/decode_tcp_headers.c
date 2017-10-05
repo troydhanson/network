@@ -105,7 +105,7 @@ void cb(u_char *unused, const struct pcap_pkthdr *hdr, const u_char *pkt) {
   const uint8_t *ip_datagram, *ip_hl, *ip_tos, *ip_len, *ip_id, *ip_fo, *ip_ttl, 
           *ip_proto, *ip_sum, *ip_src, *ip_dst, *ip_opt, *ip_data;
   uint8_t ip_version, ip_hdr_len, *ap;
-  uint16_t ip_lenh, ip_idh, ip_opts_len;
+  uint16_t ip_lenh, ip_idh, ip_opts_len, ip_foh;
   uint32_t ip_srch, ip_dsth;
   if (etype == ip) {
     ip_datagram = data;
@@ -117,7 +117,7 @@ void cb(u_char *unused, const struct pcap_pkthdr *hdr, const u_char *pkt) {
     ip_tos = data + 1;
     ip_len = data + 2;
     ip_id =  data + 4;
-    ip_fo =  data + 6;  /* TODO if fragmented, TCP/UDP header not repeated */
+    ip_fo =  data + 6;
     ip_ttl = data + 8;
     ip_proto=data + 9;
     ip_sum = data + 10;
@@ -128,9 +128,10 @@ void cb(u_char *unused, const struct pcap_pkthdr *hdr, const u_char *pkt) {
 
     memcpy(&ip_lenh, ip_len, sizeof(uint16_t)); ip_lenh = ntohs(ip_lenh);
     memcpy(&ip_idh, ip_id, sizeof(uint16_t)); ip_idh = ntohs(ip_idh);
-    printf(" IP vers: %d hdr_len: %d opts_len: %d id: %d ttl: %d, proto: %d ",
+    memcpy(&ip_foh, ip_fo, sizeof(uint16_t)); ip_foh = (ntohs(ip_foh) & 0x1fff)*8;
+    printf(" IP vers: %d hdr_len: %d opts_len: %d id: %d off: %d ttl: %d, proto: %d ",
      (unsigned)ip_version, (unsigned)ip_hdr_len, (unsigned)ip_opts_len, 
-     (unsigned)ip_idh, (unsigned)(*ip_ttl), (unsigned)(*ip_proto));
+     (unsigned)ip_idh, (unsigned)ip_foh, (unsigned)(*ip_ttl), (unsigned)(*ip_proto));
     switch((unsigned)(*ip_proto)) {
       case 1: ipproto = icmp; printf("(icmp) "); break;
       case 2: ipproto = igmp; printf("(igmp) "); break;
@@ -150,6 +151,11 @@ void cb(u_char *unused, const struct pcap_pkthdr *hdr, const u_char *pkt) {
                                 (ip_dsth & 0x000000ff) >>  0);
     data = ip_data;
     printf("\n"); /* end of IP datagram level */
+    if (ip_foh)  {
+      /* if fragmented, TCP/UDP header only in initial fragment */
+      printf("non-initial fragment; headers present on initial fragment only\n");
+      return;
+    }
 
   /*****************************************************************************
   * UDP datagram or TCP segment
