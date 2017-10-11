@@ -1,4 +1,5 @@
-all: cli srv
+OBJS=cli srv send-udp recv-udp
+all: $(OBJS)
 
 clean:
-	rm -f *.o cli srv
+	rm -f *.o $(OBJS)
