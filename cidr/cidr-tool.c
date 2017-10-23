@@ -182,27 +182,23 @@ int infer_mode(int argc, char **argv) {
 }
 
 void print_cidr(uint32_t cidr, uint32_t n) {
-  uint32_t mask=0, i=n;
-  while(i--) mask = (mask >> 1U) | 0x80000000;
+  uint64_t mask = ~((1UL << (32-n)) - 1);
   struct in_addr ia = {.s_addr = htonl(cidr & mask)};
   printf("%s/%u\n", inet_ntoa(ia), n);
 }
 
 uint32_t min_cidr(uint32_t cidr, uint32_t n) {
-  uint32_t mask=0;
-  while(n--) mask = (mask >> 1U) | 0x80000000;
+  uint64_t mask = ~((1UL << (32-n)) - 1);
   return cidr & mask;
 }
 
 uint32_t max_cidr(uint32_t cidr, uint32_t n) {
-  uint32_t mask=0;
-  while(n--) mask = (mask >> 1U) | 0x80000000;
+  uint64_t mask = ~((1UL << (32-n)) - 1);
   return (cidr & mask) | ~mask;
 }
 
 int in_cidr(uint32_t ip, uint32_t cidr, uint32_t n) {
-  uint32_t mask=0;
-  while(n--) mask = (mask >> 1U) | 0x80000000;
+  uint64_t mask = ~((1UL << (32-n)) - 1);
   return ((cidr & mask) == (ip & mask)) ? 1 : 0;
 }
 
@@ -231,29 +227,29 @@ uint32_t widen_cidr(uint32_t cidr, uint32_t n, uint32_t ip,
 }
 
 int generate_result(int argc, char *argv[]) {
+  uint32_t n=0,c=0,network=0,m;
+  uint64_t mask;
   int rc = -1;
-  uint32_t i=0,n=0,c=0,network=0,m;
 
   switch (CF.mode) {
     case MODE_MASK_TO_N:
       printf("/%u\n", CF.slash_n);
       break;
     case MODE_N_TO_MASK:
-      while(n++ < CF.slash_n) i = (i >> 1U) | 0x80000000;
-      struct in_addr ia = {.s_addr = htonl(i)};
+      mask = ~((1UL << (32-CF.slash_n)) - 1);
+      struct in_addr ia = {.s_addr = htonl(mask)};
       printf("%s\n", inet_ntoa(ia));
       break;
     case MODE_IN_SAME_NET:
-      while(n++ < CF.slash_n) i = (i >> 1U) | 0x80000000;
-      /* elide consumed argv/argc from slash_n */
+      mask = ~((1UL << (32-CF.slash_n)) - 1);
       assert(argc);
       argc--;
       argv++;
       while(c < argc) {
         struct in_addr ia;
         if (inet_aton( argv[c], &ia) == 0) goto done;
-        if (c++ == 0) network = i & ntohl(ia.s_addr);
-        if ((i & ntohl(ia.s_addr)) != network) {
+        if (c++ == 0) network = mask & ntohl(ia.s_addr);
+        if ((mask & ntohl(ia.s_addr)) != network) {
           printf("Addresses in different networks\n");
           rc = 0;
           goto done;
@@ -262,12 +258,12 @@ int generate_result(int argc, char *argv[]) {
       printf("Addresses in same network\n");
       break;
     case MODE_CIDR_EXPAND:
-      while(n++ < CF.slash_n) i = (i >> 1U) | 0x80000000;
+      mask = ~((1UL << (32-CF.slash_n)) - 1);
       uint32_t num_host_bits = 32 - CF.slash_n;
       uint64_t num_permutations = 1U << num_host_bits;
       uint64_t h = 0;
       while(h < num_permutations) {
-        uint32_t ip = (CF.cidr & i) | h++;
+        uint32_t ip = (CF.cidr & mask) | h++;
         struct in_addr ia = {.s_addr = htonl(ip)};
         printf("%s\n", inet_ntoa(ia));
       }

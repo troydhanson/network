@@ -35,7 +35,9 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "gethostbyname: %s\n", hstrerror(h_errno));
     exit(-1);
   }
-  in_addr_t addr = (*(struct in_addr*)h->h_addr).s_addr;
+  struct in_addr ia = *(struct in_addr*)h->h_addr;
+  in_addr_t addr = ia.s_addr;
+  fprintf(stderr, "%s resolves to %s\n", host, inet_ntoa(ia));
 
   /**********************************************************
    * create an IPv4/UDP socket, not yet bound to any address

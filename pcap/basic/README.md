@@ -9,3 +9,4 @@ Some examples of using libpcap and header decoding
 * `signal_driven_capture`: use signal driven I/O with pcap socket, iface stats
 * `multi_mode`: read from interface or one PCAP or watch incoming pcap directory
 * `pkt_bloom` : small libpcap program that creates a Bloom filter from packets
+* `cross_border`: run bitwise test to see if an IP packet crosses a cidr border
