@@ -838,6 +838,12 @@ won&#8217;t collide with other names in the filesystem.  Also, when a server clo
 its UNIX domain listening socket in the abstract namespace, its file is deleted;
 with regular UNIX domain sockets, the file persists after the server closes it.</p></div>
 </div>
+<div class="sect2">
+<h3 id="_advanced_features">Advanced features</h3>
+<div class="paragraph"><p>Unix domain sockets can pass peer credentials and references to open files
+between processes. These counter-intuitive abilities utilize ancillary data.
+See unix(7), that is, <code>man -s 7 unix</code> and the subdirectories here for examples.</p></div>
+</div>
 </div>
 </div>
 <div class="sect1">
@@ -848,12 +854,12 @@ server. These are placed in the public domain.</p></div>
 <div class="ulist"><ul>
 <li>
 <p>
-A <a href="https://github.com/troydhanson/network/blob/master/unixdomain/srv.c">server</a> example
+A <a href="https://github.com/troydhanson/network/blob/master/unixdomain/01.basic/srv.c">server</a> example
 </p>
 </li>
 <li>
 <p>
-A <a href="https://github.com/troydhanson/network/blob/master/unixdomain/cli.c">client</a> example
+A <a href="https://github.com/troydhanson/network/blob/master/unixdomain/01.basic/cli.c">client</a> example
 </p>
 </li>
 </ul></div>
@@ -863,7 +869,8 @@ A <a href="https://github.com/troydhanson/network/blob/master/unixdomain/cli.c">
 <div id="footnotes"><hr /></div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2015-02-16 09:32:28 EST
+Last updated
+ 2017-11-16 00:21:18 PST
 </div>
 </div>
 </body>

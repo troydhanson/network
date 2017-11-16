@@ -3,6 +3,3 @@ See http://troydhanson.github.com/network/Unix_domain_sockets.html
 
 * cli.c: example of UNIX domain socket client 
 * srv.c: example of UNIX domain client server
-
-The subdirectories have more examples of UNIX domain sockets. These
-include passing descriptors and credentials, and using autobind.

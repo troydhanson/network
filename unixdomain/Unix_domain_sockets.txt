@@ -82,13 +82,19 @@ with regular UNIX domain sockets, the file persists after the server closes it.
 :t: https://github.com/troydhanson/network/tree/master/unixdomain
 :b: https://github.com/troydhanson/network/blob/master/unixdomain
 
+Advanced features
+~~~~~~~~~~~~~~~~~
+Unix domain sockets can pass peer credentials and references to open files
+between processes. These counter-intuitive abilities utilize ancillary data.
+See unix(7), that is, `man -s 7 unix` and the subdirectories here for examples.
+
 Resources
 ---------
 Here are {t}[some C programs] that implement a UNIX domain socket client and
 server. These are placed in the public domain.
 
-* A {b}/srv.c[server] example
-* A {b}/cli.c[client] example
+* A {b}/01.basic/srv.c[server] example
+* A {b}/01.basic/cli.c[client] example
 
 
 // vim: set tw=80 wm=2 aw syntax=asciidoc: 
